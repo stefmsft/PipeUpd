@@ -92,8 +92,9 @@ def main():
     print(f'  - Il contient {len(df_pipe)} lignes')
 
     #Drop Null Columns
-    df_pipe = df_pipe.drop('Unnamed: 0', axis=1)
-    df_pipe = df_pipe.drop('Unnamed: 2', axis=1)
+    for i in df_pipe.columns:
+        if i.startswith('Unnamed:'):
+            df_pipe = df_pipe.drop(i, axis=1)
 
     # Reorg Columns to fit the Master Pipe Format
     # 'Opportunity Owner', 'Opportunity Number', 'Created Date', 'Close Date', 'Stage', 'Indirect Account', 'Account Name', 'Sales Model Name', 'Part Number', 'Estimated Quantity', 'Sales Price', 'Estimated Total Price', 'End Customer'
