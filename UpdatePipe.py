@@ -6,20 +6,21 @@ import openpyxl
 import glob
 import os
 import warnings
+from dotenv import load_dotenv
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
-## Raw Data Input
+load_dotenv()
 
-DIRECTORY_PIPE_RAW="C:\\Users\\stephane_saunier\\OneDrive - ASUS\\Bizz\\SalesReports\\PipeExtracts"
-#INPUT_SUIVI_RAW="C:\\Projects\\MacroBizzPipe\\Pipeline Projet - Test MACRO - Do not touch.xlsm"
-INPUT_SUIVI_RAW="C:\\Users\stephane_saunier\\ASUS\\ASUS BUSINESS TEAM - Channel Weekly Meeting\\Pipeline Projet - Reunion Pipe - Updated  MACRO.xlsm"
-#OUTPUT_SUIVI_RAW="C:\\Projects\\MacroBizzPipe\\Out-Test.xlsm"
-OUTPUT_SUIVI_RAW="C:\\Users\stephane_saunier\\ASUS\\ASUS BUSINESS TEAM - Channel Weekly Meeting\\Pipeline Projet - Reunion Pipe - Updated  MACRO.xlsm"
+DIRECTORY_PIPE_RAW = os.getenv("DIRECTORY_PIPE_RAW")
+INPUT_SUIVI_RAW = os.getenv("INPUT_SUIVI_RAW")
+OUTPUT_SUIVI_RAW = os.getenv("OUTPUT_SUIVI_RAW")
+SKIP_ROW = int(os.getenv("SKIP_ROW"))
+
 
 def GetLatestPipe(idir):
 
-    files = glob.glob(f'{idir}/*.xlsx')
+    files = glob.glob(f'{idir}/*.xls*')
     latest_file = max(files, key=os.path.getctime)
 
     return(latest_file)
@@ -40,25 +41,44 @@ def Mapping_Generic  (Key,Col):
     return rtv
 
 #Mapping Functions for
-# 'Category Deal\nStock /CTO', 'Product Family\n(NX, NB, NR, PD, PT, PF)', 'Qty\nUnit', 'Revenu projet\nK Euros', 'Quarter Invoice\nFacturation', 'Forecast projet\nMenu déroulant', 'Next Step & Support demandé / Commentaire'
-
-def Mapping_CatDeal (Key):
-
-    CapResult = Mapping_Generic(Key,'Category Deal\nStock /CTO').capitalize()
-
-    return CapResult
-
-def Mapping_ProdFam (Key):
-
-    return Mapping_Generic(Key,'Product Family\n(NX, NB, NR, PD, PT, PF)')
+# 'Estimated\nQuantity', 'Revenu From\nEstinated Qty', 'Quarter Invoice\nFacturation', 'Forecast projet\nMenu déroulant', 'Next Step & Support demandé / Commentaire'
 
 def Mapping_Qty (Key):
 
-    return Mapping_Generic(Key,'Qty\nUnit')
+    # Rules :
+    # if a '=' if found, meaning a ref to another cell, I replace this ref with the value of the cell 'Qauntité'
+
+    eq = Mapping_Generic(Key,'Estimated\nQuantity')
+
+    if str(eq).startswith('='):
+        rowval = df_master.loc[df_master['Key'] == Key]
+        eq = rowval['Quantité'].values[0]
+
+    return eq
 
 def Mapping_RevEur (Key):
 
-    return Mapping_Generic(Key,'Revenu projet\nK Euros')
+    # Rules :
+    # if the cell is not empty, it has either a value or a ref to another cell (start with '=')
+    # if it's a ref ... I replace this ref with the only acceptable value for the cell : 'Prix total'
+    # if not, I fill the cell with the result of the Estimated Quantity multiplied by the 'Prix de vente'
+
+    re = Mapping_Generic(Key,'Revenu From\nEstinated Qty')
+
+    try:
+
+        if re != None:
+            if re != '':
+                rowval = df_master.loc[df_master['Key'] == Key]
+                if str(re).startswith('='):
+                    re = rowval['Prix total'].values[0]
+                else:
+                    re = rowval['Estimated\nQuantity'].values[0] * rowval['Prix de vente'].values[0]
+    except:
+        pass
+
+
+    return re
 
 def Mapping_QtrInvoice (Key):
 
@@ -88,21 +108,24 @@ def main():
     ####################################
 
     print(f'- Utilisation du fichier pipe : {LatestPipe}')
-    df_pipe = pd.read_excel(LatestPipe, skiprows=11)
+    # Skip SKIP_ROW if extract made with header details. Depending on the header lines this value can be updated from .env file
+    df_pipe = pd.read_excel(LatestPipe, skiprows=SKIP_ROW)
+
     print(f'  - Il contient {len(df_pipe)} lignes')
 
-    #Drop Null Columns
+    #Drop Empty Columns
     for i in df_pipe.columns:
         if i.startswith('Unnamed:'):
             df_pipe = df_pipe.drop(i, axis=1)
 
-    # Reorg Columns to fit the Master Pipe Format
-    # 'Opportunity Owner', 'Opportunity Number', 'Created Date', 'Close Date', 'Stage', 'Indirect Account', 'Account Name', 'Sales Model Name', 'Part Number', 'Estimated Quantity', 'Sales Price', 'Estimated Total Price', 'End Customer'
+    # Reorg Columns to fit the expected Master Format
+    # 'Opportunity Owner','Created Date','Close Date','Stage','Opportunity Number','Indirect Account','End Customer','Estimated Quantity','Sales Price','Estimated Total Price','Sales Model Name','Part Number','Account Name','Product Line','Deal Type'
     cols = list(df_pipe.columns.values)
+    # Col numbers starts at 0
     Cval = cols.pop(11) 
-    cols.insert(5, Cval)
-    Cval = cols.pop(12) 
-    cols.insert(6, Cval)
+    cols.insert(7, Cval)
+    Cval = cols.pop(11) 
+    cols.insert(7, Cval)
     df_pipe = df_pipe.reindex(columns=cols)
 
     ####################################
@@ -110,7 +133,7 @@ def main():
     ####################################
 
     # Owner to keep
-    # 'William ROMAN', 'Corinne CORDEIRO', 'Kajanan SHAN', 'Younes Giaccheri', 'Aziz ABELHAOU', 'Hippolyte FOVIAUX', 'Hatem ABBACI', 'Mehdi Dahbi', 'Gwenael BOJU', 'Charles TEZENAS'
+    # 'William ROMAN', 'Corinne CORDEIRO', 'Kajanan SHAN', 'Younes Giaccheri', 'Aziz ABELHAOU', 'Hippolyte FOVIAUX', 'Hatem ABBACI', 'Mehdi Dahbi', 'Gwenael BOJU', 'Charles TEZENAS', Etc ...
     
     # Owner to drop ??
     # 'Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ'
@@ -153,8 +176,7 @@ def main():
 
     # Drop first row
     df_master.drop(index=df_master.index[0], axis=0, inplace=True)
-    # Get a list on column name -> Easy to acces Columns after with df.loc[:, CName[NbCol]]
-    # CName = df_master.iloc[0]
+
     # Set column name from new first row
     df_master.columns = df_master.iloc[0]
     # Reset the Index
@@ -166,9 +188,10 @@ def main():
 
     # Columns de df_master
     # Common with Pipe File
+    # Old Format : 'Propriétaire de l'opportunité', 'Date de création','Date de clôture', 'Etape', 'Opportunity Number', 'Revendeur','Client Final', 'Quantité', 'Prix de vente', 'Prix total','Nom du produit', 'Code du produit', 'Grossiste','Product Family\n(NX, NB, NR, PD, PT, PF)','Category Deal\nStock /CTO'
     # 'Propriétaire de l'opportunité', 'Opportunity Number', 'Date de création', 'Date de clôture', 'Étape', 'Revendeur', 'Client Final', 'Nom du produit', 'Code du produit', 'Quantité', 'Prix de vente', 'Prix total', 'Grossiste',
-    # Added for manual change
-    # 'Category Deal\nStock /CTO', 'Product Family\n(NX, NB, NR, PD, PT, PF)', 'Qty\nUnit', 'Revenu projet\nK Euros', 'Quarter Invoice\nFacturation', 'Forecast projet\nMenu déroulant', 'Next Step & Support demandé / Commentaire'
+    # Added for Sales manual change (5 cols)
+    # 'Qty\nUnit', 'Revenu projet\nK Euros', 'Quarter Invoice\nFacturation', 'Forecast projet\nMenu déroulant', 'Next Step & Support demandé / Commentaire'
  
     # Cleanup OPTY and Model Name (remove NaN)
     df_master['Opportunity Number'].fillna("", inplace=True)
@@ -176,19 +199,14 @@ def main():
 
     # Create Key Columns (Opty+Model)
     df_master['Key'] = df_master.apply(lambda row: f'{row["Opportunity Number"]}{row["Nom du produit"]}', axis = 1)
-
-    # Copy df-master Columns value in df_pipe if exists already ... Otherwise leave blank
-    # Column Category Deal
-    df_pipe['Category Deal\nStock /CTO'] = df_pipe['Key'].map(Mapping_CatDeal)
-
-    # Column Product Familly
-    df_pipe['Product Family\n(NX, NB, NR, PD, PT, PF)'] = df_pipe['Key'].map(Mapping_ProdFam)
+    # Master columns used for the Key while transitioning Columns Names
+    #df_master['Key'] = df_master.apply(lambda row: f'{row["Date de création"]}{row["Quantité"]}', axis = 1)
 
     # Column Quantity
-    df_pipe['Qty\nUnit'] = df_pipe['Key'].map(Mapping_Qty)
+    df_pipe['Estimated\nQuantity'] = df_pipe['Key'].map(Mapping_Qty)
 
     # Column Revenu projet
-    df_pipe['Revenu projet\nK Euros'] = df_pipe['Key'].map(Mapping_RevEur)
+    df_pipe['Revenu From\nEstinated Qty'] = df_pipe['Key'].map(Mapping_RevEur)
 
     # Column Quarter Invoice
     df_pipe['Quarter Invoice\nFacturation'] = df_pipe['Key'].map(Mapping_QtrInvoice)
@@ -210,24 +228,23 @@ def main():
 
     worksheet.delete_rows(3, amount=(worksheet.max_row - 2))
 
-#    wso = myworkbook.create_sheet("Updated Pipe")
     for r in dataframe_to_rows(df_pipe, index=False, header=False):
         worksheet.append(r)
 
-    print(f'  - l onglet contient {len(df_master)} lignes maintenant')
+    print(f'  - l onglet contient {len(df_pipe)} lignes maintenant')
 
     # Apply Columns Formats
+    # Col C = 2
+    Format_Cell(worksheet,2,numbers.FORMAT_DATE_DDMMYY)
     # Col C = 3
     Format_Cell(worksheet,3,numbers.FORMAT_DATE_DDMMYY)
-    # Col C = 4
-    Format_Cell(worksheet,4,numbers.FORMAT_DATE_DDMMYY)
 
-    # Col K = 11
-    Format_Cell(worksheet,11,numbers.FORMAT_CURRENCY_EUR_SIMPLE)
-    # Col L = 12
-    Format_Cell(worksheet,12,numbers.FORMAT_CURRENCY_EUR_SIMPLE)
+    # Col K = 9
+    Format_Cell(worksheet,9,numbers.FORMAT_CURRENCY_EUR_SIMPLE)
+    # Col L = 10
+    Format_Cell(worksheet,10,'[$EUR ]#,##0_-')
     # Col Q = 17
-    Format_Cell(worksheet,17,numbers.FORMAT_CURRENCY_EUR_SIMPLE)
+    Format_Cell(worksheet,17,'[$EUR ]#,##0_-')
 
     myworkbook.save(OUTPUT_SUIVI_RAW)
 
