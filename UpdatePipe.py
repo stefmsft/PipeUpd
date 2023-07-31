@@ -97,6 +97,12 @@ def Format_Cell(WS,ColIdx,Format):
     for r in range(3,WS.max_row):
         WS.cell(r,ColIdx).number_format = Format
 
+    return
+
+def Add_ToLogStat(dp,wb):
+
+    return
+
 def main():
 
     global df_master
@@ -110,8 +116,6 @@ def main():
     print(f'- Utilisation du fichier pipe : {LatestPipe}')
     # Skip SKIP_ROW if extract made with header details. Depending on the header lines this value can be updated from .env file
     df_pipe = pd.read_excel(LatestPipe, skiprows=SKIP_ROW)
-
-    print(f'  - Il contient {len(df_pipe)} lignes')
 
     #Drop Empty Columns
     for i in df_pipe.columns:
@@ -132,6 +136,16 @@ def main():
     # Cleanup Data
     ####################################
 
+    # Bogus Values
+    # 'Total', nan, 'Confidential Information - Do Not Distribute', 'Copyright © 2000-2023 salesforce.com, inc. All rights reserved.'
+    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Total'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Confidential Information - Do Not Distribute'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Copyright © 2000-2023 salesforce.com, inc. All rights reserved.'].index, inplace=True)
+    df_pipe.dropna(subset=['Opportunity Owner'], inplace=True)
+
+
+    print(f'  - Il contient {len(df_pipe)} lignes')
+
     # Owner to keep
     # 'William ROMAN', 'Corinne CORDEIRO', 'Kajanan SHAN', 'Younes Giaccheri', 'Aziz ABELHAOU', 'Hippolyte FOVIAUX', 'Hatem ABBACI', 'Mehdi Dahbi', 'Gwenael BOJU', 'Charles TEZENAS', Etc ...
     
@@ -141,12 +155,8 @@ def main():
     df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Vincent HALLER'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Mathieu LUTZ'].index, inplace=True)
 
-    # Bogus Values
-    # 'Total', nan, 'Confidential Information - Do Not Distribute', 'Copyright © 2000-2023 salesforce.com, inc. All rights reserved.'
-    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Total'].index, inplace=True)
-    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Confidential Information - Do Not Distribute'].index, inplace=True)
-    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Copyright © 2000-2023 salesforce.com, inc. All rights reserved.'].index, inplace=True)
-    df_pipe.dropna(subset=['Opportunity Owner'], inplace=True)
+    # Remove "Run Rate" Type  Deals
+    df_pipe.drop(df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].index, inplace=True)
 
     # Cleanup OPTY (remove NaN)
     df_pipe['Opportunity Number'].fillna("", inplace=True)
@@ -171,8 +181,7 @@ def main():
     df_master = pd.DataFrame(worksheet.values)
 
     print(f'- Selection de l onglet Pipe Sell Out du fichier {INPUT_SUIVI_RAW}')
-    print(f'  - Il contient {len(df_master) - 1} lignes')
-    print(f'- Injection / refresh des dernieres OPTY ...')
+
 
     # Drop first row
     df_master.drop(index=df_master.index[0], axis=0, inplace=True)
@@ -181,6 +190,9 @@ def main():
     df_master.columns = df_master.iloc[0]
     # Reset the Index
     df_master = df_master.reset_index(drop=True)
+
+    print(f'  - Il contient {len(df_master) - 1} lignes')
+    print(f'- Injection / refresh des dernieres OPTY ...')
 
     ####################################
     # Clean and Copy the previous value of updated columns from df_master in df_pipe when the corresponding Key (OPTY+MODEL) match
@@ -232,6 +244,8 @@ def main():
         worksheet.append(r)
 
     print(f'  - l onglet contient {len(df_pipe)} lignes maintenant')
+
+    Add_ToLogStat(df_pipe,myworkbook)
 
     # Apply Columns Formats
     # Col C = 2
