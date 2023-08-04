@@ -1,6 +1,6 @@
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import numbers
-from datetime import datetime
+from datetime import date,datetime
 import pandas as pd
 import openpyxl
 import glob
@@ -15,7 +15,28 @@ load_dotenv()
 DIRECTORY_PIPE_RAW = os.getenv("DIRECTORY_PIPE_RAW")
 INPUT_SUIVI_RAW = os.getenv("INPUT_SUIVI_RAW")
 OUTPUT_SUIVI_RAW = os.getenv("OUTPUT_SUIVI_RAW")
-SKIP_ROW = int(os.getenv("SKIP_ROW"))
+
+SKIP_ROW = os.getenv("SKIP_ROW")
+
+if (SKIP_ROW == None):
+    SKIP_ROW=0
+else:
+    SKIP_ROW = int(SKIP_ROW)
+
+GRANULARITE = os.getenv("GRANULARITE")
+if (GRANULARITE == None): GRANULARITE='Date'
+
+GRANULARITE_COL = os.getenv("GRANULARITE_COL")
+if (GRANULARITE_COL == None):
+    GRANULARITE_COL=0
+else:
+    GRANULARITE_COL = int(GRANULARITE_COL)
+
+
+
+################################################################
+# Functions Helper
+################################################################
 
 
 def GetLatestPipe(idir):
@@ -92,16 +113,53 @@ def Mapping_NxtStp (Key):
 
     return Mapping_Generic(Key,'Next Step & Support demandé / Commentaire')
 
-def Format_Cell(WS,ColIdx,Format):
+def Format_Cell(WS,start,ColIdx,Format):
 
-    for r in range(3,WS.max_row):
+    for r in range(start,WS.max_row+1):
         WS.cell(r,ColIdx).number_format = Format
 
     return
 
-def Add_ToLogStat(dp,wb):
+def Write2Log(wb,DataLst):
+
+    # Check if "Pipe Log" is present
+    shl = wb.sheetnames
+    if "Pipe Log" not in shl:
+        wslog = wb.create_sheet("Pipe Log")
+        Flag = True
+    else:
+        wslog = wb['Pipe Log']
+        Flag = False
+
+    last_row = wslog.max_row
+
+    if last_row == 1:
+        df_log = pd.DataFrame(columns = ['Date', 'WK', 'Nb OPTY','Sales Force Amount','Estimated Amount'])
+    else:
+        df_log = pd.DataFrame(wslog.values)
+        # Set column name from new first row
+        df_log.columns = df_log.iloc[0]
+        # Reset the Index
+        df_log.drop(df_log.index[0],inplace=True)
+
+    rowval = df_log.loc[df_log[GRANULARITE] == DataLst[GRANULARITE_COL]]
+    if (len(rowval) != 0):
+        idx = df_log.index[df_log[GRANULARITE] == DataLst[GRANULARITE_COL]]
+        df_log.loc[idx] = DataLst
+    else:
+        df_log.loc[len(df_log)+1] = DataLst
+
+    wslog.delete_rows(2, amount=(wslog.max_row - 1))
+
+    for r in dataframe_to_rows(df_log, index=False, header=Flag):
+        wslog.append(r)
+
+    Format_Cell(wslog,2,1,numbers.FORMAT_DATE_DDMMYY)
+    Format_Cell(wslog,2,4,'[$EUR ]#,##0_-')
+    Format_Cell(wslog,2,5,'[$EUR ]#,##0_-')
 
     return
+
 
 def main():
 
@@ -236,6 +294,9 @@ def main():
     df_pipe.drop(['Key'], axis=1, inplace=True)
     df_master.drop(['Key'], axis=1, inplace=True)
 
+    SFPipeAmmount = df_pipe['Estimated Total Price'].sum()
+    EstPipeAmmount = df_pipe['Revenu From\nEstinated Qty'].apply(pd.to_numeric, errors='coerce').sum()
+
     df_pipe.columns = df_master.columns
 
     worksheet.delete_rows(3, amount=(worksheet.max_row - 2))
@@ -245,20 +306,22 @@ def main():
 
     print(f'  - l onglet contient {len(df_pipe)} lignes maintenant')
 
-    Add_ToLogStat(df_pipe,myworkbook)
-
     # Apply Columns Formats
     # Col C = 2
-    Format_Cell(worksheet,2,numbers.FORMAT_DATE_DDMMYY)
+    Format_Cell(worksheet,3,2,numbers.FORMAT_DATE_DDMMYY)
     # Col C = 3
-    Format_Cell(worksheet,3,numbers.FORMAT_DATE_DDMMYY)
+    Format_Cell(worksheet,3,3,numbers.FORMAT_DATE_DDMMYY)
 
     # Col K = 9
-    Format_Cell(worksheet,9,numbers.FORMAT_CURRENCY_EUR_SIMPLE)
+    Format_Cell(worksheet,3,9,numbers.FORMAT_CURRENCY_EUR_SIMPLE)
     # Col L = 10
-    Format_Cell(worksheet,10,'[$EUR ]#,##0_-')
+    Format_Cell(worksheet,3,10,'[$EUR ]#,##0_-')
     # Col Q = 17
-    Format_Cell(worksheet,17,'[$EUR ]#,##0_-')
+    Format_Cell(worksheet,3,17,'[$EUR ]#,##0_-')
+
+    # Log Pipe Data
+    lst = [datetime(datetime.now().year,datetime.now().month,datetime.now().day,0,0), date.today().isocalendar()[1], worksheet.max_row - 2, SFPipeAmmount, EstPipeAmmount]
+    Write2Log(myworkbook,lst)
 
     myworkbook.save(OUTPUT_SUIVI_RAW)
 

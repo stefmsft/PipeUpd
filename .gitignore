@@ -167,3 +167,4 @@ Include
 *.beforerenew
 *.orig
 *.zip
+*.xml
