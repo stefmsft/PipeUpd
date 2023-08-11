@@ -1,3 +1,4 @@
+import math
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import numbers
 from datetime import date,datetime
@@ -6,6 +7,8 @@ import openpyxl
 import glob
 import os
 import warnings
+import sys
+import time
 from dotenv import load_dotenv
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -45,6 +48,24 @@ def GetLatestPipe(idir):
     latest_file = max(files, key=os.path.getctime)
 
     return(latest_file)
+
+def GetAllPipe(idir):
+
+    files = glob.glob(f'{idir}/*.xls*')
+    files.sort(key=os.path.getctime)
+
+    return(files)
+
+
+def CheckPipeFile(pfile):
+
+    isValid = False
+    if os.path.isfile(pfile):
+        isValid = True
+        if not ((os.path.splitext(pfile)[-1].lower() != '.xls') or (os.path.splitext(pfile)[-1].lower() != '.xlsx')):
+            isValid = False
+
+    return isValid
 
 #Generic Mapping Functions
 def Mapping_Generic  (Key,Col):
@@ -158,14 +179,123 @@ def Write2Log(wb,DataLst):
     Format_Cell(wslog,2,4,'[$EUR ]#,##0_-')
     Format_Cell(wslog,2,5,'[$EUR ]#,##0_-')
 
-    return
+    return df_log
 
+def UpdatePipeAnalysis(wb,df_log):
+    # df_log expected columns:
+    # 'Date', 'WK', 'Nb OPTY', 'Sales Force Amount', 'Estimated Amount'
 
-def main():
+    # Row where the Data starts (Generally 2 when the first row is used for header)
+    LOGSHIFTROWDATA=2
+    # Difference in row between the data start in "Log" tab versus the "analysis" tab
+    # For instance 1 means that in the "Log" tab data starts row LOGSHIFTROWDATA=2 but on the
+    # "Analysis" Tab it begins row 3
+    SHIFTROWBETWEENTAB=1
+
+    # Max delta between both normalization
+    NORMAXDELTA=5000000
+
+    ret = False
+    NormalizeEstimate = False
+
+    shl = wb.sheetnames
+    if "Pipe Log" not in shl:
+        return ret
+    
+    # Get the Pipe Log Sheet
+    wslog = wb['Pipe Log']
+    # Get order of magnitude for the sales numbers
+    # df_log['Magnitude'] = df_log.apply(lambda row: math.floor(math.log10(row['Sales Force Amount'])), axis = 1)
+    MaxSFA = max(df_log['Sales Force Amount'])
+    Mag = math.floor(math.log10(MaxSFA))
+
+    # We substract according to its level of magnitude all common digit in the Amount serie
+    # For instance is all 9 digits (Magnitude 8) amount start with 16 we substract 160000000 to the amount on the whole serie
+    # The goal of the folowing loop is to find this subracted amount
+
+    NormalizationVal = 0
+    for d in range(Mag):
+        df_log['Digit'] = df_log.apply(lambda row: str(row['Sales Force Amount'])[d], axis = 1)
+        if len(df_log['Digit'].unique()) == 1:
+            NormalizationVal = NormalizationVal + int(df_log['Digit'].unique()[0]) * 10**Mag
+            Mag = Mag -1
+        else:
+            break
+
+    # Check if a Normalization is also needed on the Estimated value
+    # If one amount on the Estimate series is above the normalized value of Sales Force Amount we need to Normalize them
+    # For that we capture the difference between Sales Amount and Estimated Amount on the real value and
+    # we reapply this difference on the Normalized value
+    MaxSFAE = max(df_log['Estimated Amount'])
+    MinSFAE = min(df_log['Estimated Amount'])
+    Mag = math.floor(math.log10(MaxSFAE))
+
+    if MaxSFA  - NormalizationVal < MinSFAE:
+        NormalizeEstimate = True
+        NormalizationEVal = 0
+        for d in range(Mag):
+            df_log['Digit'] = df_log.apply(lambda row: str(row['Estimated Amount'])[d], axis = 1)
+            if len(df_log['Digit'].unique()) == 1:
+                NormalizationEVal = NormalizationEVal + int(df_log['Digit'].unique()[0]) * 10**Mag
+                Mag = Mag -1
+            else:
+                break
+        # Check if Delta of Normalized value is to big (bigger than 4M)
+        if (MaxSFA - NormalizationVal) - (MinSFAE - NormalizationEVal) > NORMAXDELTA:
+            NormalizationEVal = NORMAXDELTA + MinSFAE - MaxSFA + NormalizationVal
+
+    #Get the Pipe Log Sheet
+    wsanalog = wb['Pipe Analysis']
+
+#TODO
+# - Normalisation de Valorisation
+# - Rotation 31 Jours
+# - Max / Latest / Ratio (avec Hidden)
+
+    # Ecriture de la valeur de normalization
+    # To make it more flexible la formule utilize une soustraction la valeur d'une celule fixe (R2, R=2,C=16)
+
+    wsanalog.cell(row=2, column=18).value = NormalizationVal
+    if NormalizeEstimate:
+        wsanalog.cell(row=3, column=18).value = NormalizationEVal
+    else:
+        wsanalog.cell(row=3, column=18).value = 0
+    wsanalog.cell(row=2, column=7).value = MaxSFA
+    wsanalog.cell(row=2, column=10).value = int(df_log['Sales Force Amount'][len(df_log['Sales Force Amount'])])
+
+    for r in range(LOGSHIFTROWDATA,wslog.max_row+1):
+        #Date Col = 1
+        Formula = f"='Pipe Log'!A{r}"
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=1).value = Formula
+        #Nb OPTY Col = 2
+        Formula = f"='Pipe Log'!C{r}"
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=2).value = Formula
+        #Opt Valorisation Col = 3
+        Formula = f"='Pipe Log'!D{r}-$R$2"
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=3).value = Formula
+        #Opt Valorisation Col = 4
+        Formula = f"='Pipe Log'!E{r}-$R$3"
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=4).value = Formula
+        #Ratio XForm Pipe Col = 16
+        Formula = f"='Pipe Log'!E{r}/'Pipe Log'!D{r}"
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=16).value = Formula
+
+    # Cells Formating
+    Format_Cell(wsanalog,3,1,numbers.FORMAT_DATE_DDMMYY)
+    Format_Cell(wsanalog,3,3,'#,##0_-')
+    Format_Cell(wsanalog,3,4,'#,##0_-')
+    Format_Cell(wsanalog,3,16,'0%')
+    wsanalog.cell(2,7).number_format = '[$EUR ]#,##0_-'
+    wsanalog.cell(2,10).number_format = '[$EUR ]#,##0_-'
+
+    return ret
+
+def UpdatePipe(LatestPipe):
 
     global df_master
 
-    LatestPipe = GetLatestPipe(DIRECTORY_PIPE_RAW)
+    # Get creation Date for futur usage in the Log Tab
+    ctimef = datetime.strptime(time.ctime(os.path.getctime(LatestPipe)), "%a %b %d %H:%M:%S %Y")
 
     ####################################
     # Load Latest Pipe File
@@ -320,13 +450,46 @@ def main():
     Format_Cell(worksheet,3,17,'[$EUR ]#,##0_-')
 
     # Log Pipe Data
-    lst = [datetime(datetime.now().year,datetime.now().month,datetime.now().day,0,0), date.today().isocalendar()[1], worksheet.max_row - 2, SFPipeAmmount, EstPipeAmmount]
-    Write2Log(myworkbook,lst)
+    lst = [datetime(ctimef.year,ctimef.month,ctimef.day,0,0), ctimef.isocalendar()[1], worksheet.max_row - 2, SFPipeAmmount, EstPipeAmmount]
+    print(f'- Update Pipe Log avec {lst}')
+    df_log = Write2Log(myworkbook,lst)
+
+    if "Pipe Analysis" in myworkbook.sheetnames:
+        print(f'- Refresh Onglet Pipe Analysis')
+        UpdatePipeAnalysis(myworkbook,df_log)
 
     myworkbook.save(OUTPUT_SUIVI_RAW)
 
     print(f'- Sauvegarde vers {OUTPUT_SUIVI_RAW}')
 
+    return
+
+def main():
+
+    loopProc = False
+    PipeFList = []
+
+    if len(sys.argv) > 1:
+        print (f'Parameter {sys.argv[1]} detected')
+        if sys.argv[1].lower() == 'all':
+            loopProc = True
+            PipeFList = GetAllPipe(DIRECTORY_PIPE_RAW)
+        else:
+            if CheckPipeFile(sys.argv[1]):
+                LatestPipe = sys.argv[1]
+            else:
+                print(f'Error, {sys.argv[1]} is not a valid Pipe file')
+                exit()
+    else:
+        LatestPipe = GetLatestPipe(DIRECTORY_PIPE_RAW)
+
+    if loopProc:
+        for f in PipeFList:
+            UpdatePipe(f)
+    else:
+        UpdatePipe(LatestPipe)
+
+    return
 
 if __name__ == "__main__":
     main()

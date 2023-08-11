@@ -164,7 +164,9 @@ Scripts
 lib
 Include
 *.xlsm
+*.xlsx
 *.beforerenew
 *.orig
 *.zip
 *.xml
+settings.json
