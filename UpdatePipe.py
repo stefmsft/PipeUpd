@@ -35,6 +35,20 @@ if (GRANULARITE_COL == None):
 else:
     GRANULARITE_COL = int(GRANULARITE_COL)
 
+NORMAXDELTA = os.getenv("NORMAXDELTA")
+if (NORMAXDELTA == None):
+    NORMAXDELTA=10000000
+else:
+    NORMAXDELTA = int(NORMAXDELTA)
+
+ROLLINGWINDOWS = os.getenv("ROLLINGWINDOWS")
+if (ROLLINGWINDOWS == None):
+    ROLLINGWINDOWS=31
+else:
+    ROLLINGWINDOWS = int(ROLLINGWINDOWS)
+
+ROLLINGFIELD = os.getenv("ROLLINGFIELD")
+if (ROLLINGFIELD == None): ROLLINGFIELD='Date'
 
 
 ################################################################
@@ -192,18 +206,27 @@ def UpdatePipeAnalysis(wb,df_log):
     # "Analysis" Tab it begins row 3
     SHIFTROWBETWEENTAB=1
 
-    # Max delta between both normalization
-    NORMAXDELTA=10000000
-
     ret = False
     NormalizeEstimate = False
 
     shl = wb.sheetnames
     if "Pipe Log" not in shl:
         return ret
-    
+
     # Get the Pipe Log Sheet
     wslog = wb['Pipe Log']
+
+    if ROLLINGFIELD == 'WK':
+        df_log = df_log.drop_duplicates(subset=['WK'], keep='last', ignore_index=False).copy()
+
+    # Slicing for the last n values
+    df_log = df_log.tail(ROLLINGWINDOWS).copy()
+    #df_log.reset_index(inplace=True)
+
+    # Calcul Start Stop for Pipe Log Windows
+    Start = (len(df_log)) - min(len(df_log),ROLLINGWINDOWS) + LOGSHIFTROWDATA
+    Stop = Start + min(len(df_log),ROLLINGWINDOWS)
+
     # Get order of magnitude for the sales numbers
     # df_log['Magnitude'] = df_log.apply(lambda row: math.floor(math.log10(row['Sales Force Amount'])), axis = 1)
     MaxSFA = max(df_log['Sales Force Amount'])
@@ -248,10 +271,6 @@ def UpdatePipeAnalysis(wb,df_log):
     #Get the Pipe Log Sheet
     wsanalog = wb['Pipe Analysis']
 
-#TODO
-# - Rotation 31 Entrées
-# - Erase systematique + Switch possible WK
-
     # Ecriture de la valeur de normalization
     # To make it more flexible la formule utilize une soustraction la valeur d'une celule fixe (R2, R=2,C=16)
 
@@ -260,25 +279,45 @@ def UpdatePipeAnalysis(wb,df_log):
         wsanalog.cell(row=3, column=18).value = NormalizationEVal
     else:
         wsanalog.cell(row=3, column=18).value = 0
-    wsanalog.cell(row=2, column=7).value = round(MaxSFA,0)
-    wsanalog.cell(row=2, column=10).value = int(df_log['Sales Force Amount'][len(df_log['Sales Force Amount'])])
 
-    for r in range(LOGSHIFTROWDATA,wslog.max_row+1):
+    # Write info on Run context
+    wsanalog.cell(row=5, column=17).value = f'By {ROLLINGFIELD}'
+    wsanalog.cell(row=6, column=17).value = f'For the last {ROLLINGWINDOWS} values'
+
+    wsanalog.cell(row=2, column=7).value = round(MaxSFA,0)
+    wsanalog.cell(row=2, column=10).value = int(df_log['Sales Force Amount'].tail(1).iloc[0])
+
+    #Effacement des valeurs precedentes
+    for r in range(LOGSHIFTROWDATA,34):
         #Date Col = 1
-        Formula = f"='Pipe Log'!A{r}"
-        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=1).value = Formula
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=1).value = ''
         #Nb OPTY Col = 2
-        Formula = f"='Pipe Log'!C{r}"
-        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=2).value = Formula
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=2).value = ''
         #Opt Valorisation Col = 3
-        Formula = f"='Pipe Log'!D{r}-$R$2"
-        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=3).value = Formula
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=3).value = ''
         #Opt Valorisation Col = 4
-        Formula = f"='Pipe Log'!E{r}-$R$3"
-        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=4).value = Formula
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=4).value = ''
         #Ratio XForm Pipe Col = 16
-        Formula = f"='Pipe Log'!E{r}/'Pipe Log'!D{r}"
-        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=16).value = Formula
+        wsanalog.cell(row=(r+SHIFTROWBETWEENTAB), column=16).value = ''
+
+    # Ecriture des formules dans les cellule sources du graph
+    for i,r in enumerate(df_log.index):
+#    for i,r in enumerate(range(Start,Stop)):
+        #Date Col = 1
+        Formula = f"='Pipe Log'!A{r+1}"
+        wsanalog.cell(row=(i+LOGSHIFTROWDATA+SHIFTROWBETWEENTAB), column=1).value = Formula
+        #Nb OPTY Col = 2
+        Formula = f"='Pipe Log'!C{r+1}"
+        wsanalog.cell(row=(i+LOGSHIFTROWDATA+SHIFTROWBETWEENTAB), column=2).value = Formula
+        #Opt Valorisation Col = 3
+        Formula = f"='Pipe Log'!D{r+1}-$R$2"
+        wsanalog.cell(row=(i+LOGSHIFTROWDATA+SHIFTROWBETWEENTAB), column=3).value = Formula
+        #Opt Valorisation Col = 4
+        Formula = f"='Pipe Log'!E{r+1}-$R$3"
+        wsanalog.cell(row=(i+LOGSHIFTROWDATA+SHIFTROWBETWEENTAB), column=4).value = Formula
+        #Ratio XForm Pipe Col = 16
+        Formula = f"='Pipe Log'!E{r+1}/'Pipe Log'!D{r+1}"
+        wsanalog.cell(row=(i+LOGSHIFTROWDATA+SHIFTROWBETWEENTAB), column=16).value = Formula
 
     # Cells Formating
     Format_Cell(wsanalog,3,1,numbers.FORMAT_DATE_DDMMYY)
