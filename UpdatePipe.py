@@ -207,7 +207,7 @@ def UpdatePipeAnalysis(wb,df_log):
     # Get order of magnitude for the sales numbers
     # df_log['Magnitude'] = df_log.apply(lambda row: math.floor(math.log10(row['Sales Force Amount'])), axis = 1)
     MaxSFA = max(df_log['Sales Force Amount'])
-    MinSFA = max(df_log['Sales Force Amount'])
+    MinSFA = min(df_log['Sales Force Amount'])
     Mag = math.floor(math.log10(MaxSFA))
 
     # We substract according to its level of magnitude all common digit in the Amount serie
@@ -243,7 +243,7 @@ def UpdatePipeAnalysis(wb,df_log):
                 break
     # Check if Delta of Normalized value is to big (bigger than 4M)
     if (MinSFA - NormalizationVal) - (MaxSFAE - NormalizationEVal) > NORMAXDELTA:
-        NormalizationVal = NormalizationVal + ((MinSFA - NormalizationVal) - (MaxSFAE - NormalizationEVal) -  NORMAXDELTA)
+        NormalizationVal = NormalizationVal + ((MinSFA - NormalizationVal) - (MinSFAE - NormalizationEVal) -  NORMAXDELTA)
 
     #Get the Pipe Log Sheet
     wsanalog = wb['Pipe Analysis']
