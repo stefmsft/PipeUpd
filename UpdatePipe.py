@@ -193,7 +193,7 @@ def UpdatePipeAnalysis(wb,df_log):
     SHIFTROWBETWEENTAB=1
 
     # Max delta between both normalization
-    NORMAXDELTA=5000000
+    NORMAXDELTA=10000000
 
     ret = False
     NormalizeEstimate = False
@@ -207,10 +207,11 @@ def UpdatePipeAnalysis(wb,df_log):
     # Get order of magnitude for the sales numbers
     # df_log['Magnitude'] = df_log.apply(lambda row: math.floor(math.log10(row['Sales Force Amount'])), axis = 1)
     MaxSFA = max(df_log['Sales Force Amount'])
+    MinSFA = max(df_log['Sales Force Amount'])
     Mag = math.floor(math.log10(MaxSFA))
 
     # We substract according to its level of magnitude all common digit in the Amount serie
-    # For instance is all 9 digits (Magnitude 8) amount start with 16 we substract 160000000 to the amount on the whole serie
+    # For instance if all 9 digits (Magnitude 8) amount start with 16 we substract 160000000 to the amount on the whole serie
     # The goal of the folowing loop is to find this subracted amount
 
     NormalizationVal = 0
@@ -223,16 +224,16 @@ def UpdatePipeAnalysis(wb,df_log):
             break
 
     # Check if a Normalization is also needed on the Estimated value
-    # If one amount on the Estimate series is above the normalized value of Sales Force Amount we need to Normalize them
-    # For that we capture the difference between Sales Amount and Estimated Amount on the real value and
-    # we reapply this difference on the Normalized value
+    # If min amount of the normalized value of Sales Force Amount is lower than the Estinate value we need to Normalize the the Estimate as well
+    # For that we apply the same algorythme than before and verify that resulting difference between the 2 Normalized serie remain in the NORMAXDELTA range
+
     MaxSFAE = max(df_log['Estimated Amount'])
     MinSFAE = min(df_log['Estimated Amount'])
     Mag = math.floor(math.log10(MaxSFAE))
 
+    NormalizationEVal = 0
     if MaxSFA  - NormalizationVal < MinSFAE:
         NormalizeEstimate = True
-        NormalizationEVal = 0
         for d in range(Mag):
             df_log['Digit'] = df_log.apply(lambda row: str(row['Estimated Amount'])[d], axis = 1)
             if len(df_log['Digit'].unique()) == 1:
@@ -240,17 +241,16 @@ def UpdatePipeAnalysis(wb,df_log):
                 Mag = Mag -1
             else:
                 break
-        # Check if Delta of Normalized value is to big (bigger than 4M)
-        if (MaxSFA - NormalizationVal) - (MinSFAE - NormalizationEVal) > NORMAXDELTA:
-            NormalizationEVal = NORMAXDELTA + MinSFAE - MaxSFA + NormalizationVal
+    # Check if Delta of Normalized value is to big (bigger than 4M)
+    if (MinSFA - NormalizationVal) - (MaxSFAE - NormalizationEVal) > NORMAXDELTA:
+        NormalizationVal = NormalizationVal + ((MinSFA - NormalizationVal) - (MaxSFAE - NormalizationEVal) -  NORMAXDELTA)
 
     #Get the Pipe Log Sheet
     wsanalog = wb['Pipe Analysis']
 
 #TODO
-# - Normalisation de Valorisation
-# - Rotation 31 Jours
-# - Max / Latest / Ratio (avec Hidden)
+# - Rotation 31 Entrées
+# - Erase systematique + Switch possible WK
 
     # Ecriture de la valeur de normalization
     # To make it more flexible la formule utilize une soustraction la valeur d'une celule fixe (R2, R=2,C=16)
@@ -260,7 +260,7 @@ def UpdatePipeAnalysis(wb,df_log):
         wsanalog.cell(row=3, column=18).value = NormalizationEVal
     else:
         wsanalog.cell(row=3, column=18).value = 0
-    wsanalog.cell(row=2, column=7).value = MaxSFA
+    wsanalog.cell(row=2, column=7).value = round(MaxSFA,0)
     wsanalog.cell(row=2, column=10).value = int(df_log['Sales Force Amount'][len(df_log['Sales Force Amount'])])
 
     for r in range(LOGSHIFTROWDATA,wslog.max_row+1):
