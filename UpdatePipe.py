@@ -50,6 +50,15 @@ else:
 ROLLINGFIELD = os.getenv("ROLLINGFIELD")
 if (ROLLINGFIELD == None): ROLLINGFIELD='Date'
 
+# To avoid localisation colision
+# Define col index for labels in Pipe file
+# Only done for col name with problem
+COL_OPTYOWNER=0
+COL_CREATED=1
+COL_CLOSED=2
+COL_STAGE=3
+COL_TOTPRICE=9
+COL_SALESMODELNAME=10
 
 ################################################################
 # Functions Helper
@@ -223,10 +232,6 @@ def UpdatePipeAnalysis(wb,df_log):
     df_log = df_log.tail(ROLLINGWINDOWS).copy()
     #df_log.reset_index(inplace=True)
 
-    # Calcul Start Stop for Pipe Log Windows
-    Start = (len(df_log)) - min(len(df_log),ROLLINGWINDOWS) + LOGSHIFTROWDATA
-    Stop = Start + min(len(df_log),ROLLINGWINDOWS)
-
     # Get order of magnitude for the sales numbers
     # df_log['Magnitude'] = df_log.apply(lambda row: math.floor(math.log10(row['Sales Force Amount'])), axis = 1)
     MaxSFA = max(df_log['Sales Force Amount'])
@@ -275,6 +280,7 @@ def UpdatePipeAnalysis(wb,df_log):
     # To make it more flexible la formule utilize une soustraction la valeur d'une celule fixe (R2, R=2,C=16)
 
     wsanalog.cell(row=2, column=18).value = NormalizationVal
+    
     if NormalizeEstimate:
         wsanalog.cell(row=3, column=18).value = NormalizationEVal
     else:
@@ -283,6 +289,7 @@ def UpdatePipeAnalysis(wb,df_log):
     # Write info on Run context
     wsanalog.cell(row=5, column=17).value = f'By {ROLLINGFIELD}'
     wsanalog.cell(row=6, column=17).value = f'For the last {ROLLINGWINDOWS} values'
+    print(f'  - Pipe Analysis with granularity on {ROLLINGFIELD}, showing the last {ROLLINGWINDOWS} records')
 
     wsanalog.cell(row=2, column=7).value = round(MaxSFA,0)
     wsanalog.cell(row=2, column=10).value = int(df_log['Sales Force Amount'].tail(1).iloc[0])
@@ -302,7 +309,6 @@ def UpdatePipeAnalysis(wb,df_log):
 
     # Ecriture des formules dans les cellule sources du graph
     for i,r in enumerate(df_log.index):
-#    for i,r in enumerate(range(Start,Stop)):
         #Date Col = 1
         Formula = f"='Pipe Log'!A{r+1}"
         wsanalog.cell(row=(i+LOGSHIFTROWDATA+SHIFTROWBETWEENTAB), column=1).value = Formula
@@ -365,10 +371,10 @@ def UpdatePipe(LatestPipe):
 
     # Bogus Values
     # 'Total', nan, 'Confidential Information - Do Not Distribute', 'Copyright © 2000-2023 salesforce.com, inc. All rights reserved.'
-    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Total'].index, inplace=True)
-    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Confidential Information - Do Not Distribute'].index, inplace=True)
-    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Copyright © 2000-2023 salesforce.com, inc. All rights reserved.'].index, inplace=True)
-    df_pipe.dropna(subset=['Opportunity Owner'], inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Total'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Confidential Information - Do Not Distribute'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Copyright © 2000-2023 salesforce.com, inc. All rights reserved.'].index, inplace=True)
+    df_pipe.dropna(subset=[cols[COL_OPTYOWNER]], inplace=True)
 
 
     print(f'  - Il contient {len(df_pipe)} lignes')
@@ -377,24 +383,25 @@ def UpdatePipe(LatestPipe):
     # 'William ROMAN', 'Corinne CORDEIRO', 'Kajanan SHAN', 'Younes Giaccheri', 'Aziz ABELHAOU', 'Hippolyte FOVIAUX', 'Hatem ABBACI', 'Mehdi Dahbi', 'Gwenael BOJU', 'Charles TEZENAS', Etc ...
     
     # Owner to drop ??
-    # 'Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ'
-    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Clement VIEILLEFONT'].index, inplace=True)
-    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Vincent HALLER'].index, inplace=True)
-    df_pipe.drop(df_pipe.loc[df_pipe['Opportunity Owner']=='Mathieu LUTZ'].index, inplace=True)
+    # 'Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao'
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Clement VIEILLEFONT'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Vincent HALLER'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Mathieu LUTZ'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]].str.startswith('Calvin Chao')].index, inplace=True)
 
     # Remove "Run Rate" Type  Deals
     df_pipe.drop(df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].index, inplace=True)
 
     # Cleanup OPTY (remove NaN)
     df_pipe['Opportunity Number'].fillna("", inplace=True)
-    df_pipe['Sales Model Name'].fillna("", inplace=True)
+    df_pipe[cols[COL_SALESMODELNAME]].fillna("", inplace=True)
 
     #Format Dates
-    df_pipe['Created Date'] = df_pipe['Created Date'].apply(pd.to_datetime, format='mixed')
-    df_pipe['Close Date'] = df_pipe['Close Date'].apply(pd.to_datetime, format='mixed')
+    df_pipe[cols[COL_CREATED]] = df_pipe[cols[COL_CREATED]].apply(pd.to_datetime, format='mixed')
+    df_pipe[cols[COL_CLOSED]] = df_pipe[cols[COL_CLOSED]].apply(pd.to_datetime, format='mixed')
 
     # Create Key Columns (Opty+Model)
-    df_pipe['Key'] = df_pipe.apply(lambda row: f'{row["Opportunity Number"]}{row["Sales Model Name"]}', axis = 1)
+    df_pipe['Key'] = df_pipe.apply(lambda row: f'{row["Opportunity Number"]}{row[cols[COL_SALESMODELNAME]]}', axis = 1)
 
     print(f'  - {len(df_pipe)} lignes apres nettoyage')
 
@@ -457,13 +464,13 @@ def UpdatePipe(LatestPipe):
     df_pipe['Next Step & Support demandé / Commentaire'] = df_pipe['Key'].map(Mapping_NxtStp)
 
     # Remove "Étape:Rejected"
-    df_pipe.drop(df_pipe.loc[df_pipe['Stage']=='Rejected'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_STAGE]]=='Rejected'].index, inplace=True)
 
     # No need of the Key Column anymore
     df_pipe.drop(['Key'], axis=1, inplace=True)
     df_master.drop(['Key'], axis=1, inplace=True)
 
-    SFPipeAmmount = df_pipe['Estimated Total Price'].sum()
+    SFPipeAmmount = df_pipe[cols[COL_TOTPRICE]].sum()
     EstPipeAmmount = df_pipe['Revenu From\nEstinated Qty'].apply(pd.to_numeric, errors='coerce').sum()
 
     df_pipe.columns = df_master.columns
