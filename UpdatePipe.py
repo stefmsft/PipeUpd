@@ -290,6 +290,8 @@ def UpdatePipeAnalysis(wb,df_log):
     wsanalog.cell(row=5, column=17).value = f'By {ROLLINGFIELD}'
     wsanalog.cell(row=6, column=17).value = f'For the last {ROLLINGWINDOWS} values'
     print(f'  - Pipe Analysis with granularity on {ROLLINGFIELD}, showing the last {ROLLINGWINDOWS} records')
+    # Write info on Run context
+    wsanalog.cell(row=8, column=17).value = f'Last run : {date.today()}'
 
     wsanalog.cell(row=2, column=7).value = round(MaxSFA,0)
     wsanalog.cell(row=2, column=10).value = int(df_log['Sales Force Amount'].tail(1).iloc[0])
