@@ -57,6 +57,7 @@ COL_OPTYOWNER=0
 COL_CREATED=1
 COL_CLOSED=2
 COL_STAGE=3
+COL_CUSTOMER=6
 COL_TOTPRICE=9
 COL_SALESMODELNAME=10
 
@@ -127,6 +128,10 @@ def Mapping_RevEur (Key):
     # if the cell is not empty, it has either a value or a ref to another cell (start with '=')
     # if it's a ref ... I replace this ref with the only acceptable value for the cell : 'Prix total'
     # if not, I fill the cell with the result of the Estimated Quantity multiplied by the 'Prix de vente'
+
+    # Update
+    # We don't car ewhat is done here ... The cell will be replace after by the formula =Pn*In
+    # But I leave the code as is ... In case we wish to come back to the previous behavior
 
     re = Mapping_Generic(Key,'Revenu From\nEstinated Qty')
 
@@ -341,6 +346,9 @@ def UpdatePipe(LatestPipe):
 
     global df_master
 
+    # Row where the Data starts (Generally 2 when the first row is used for header)
+    HEADERSHIFT=3
+
     # Get creation Date for futur usage in the Log Tab
     ctimef = datetime.strptime(time.ctime(os.path.getctime(LatestPipe)), "%a %b %d %H:%M:%S %Y")
 
@@ -390,6 +398,10 @@ def UpdatePipe(LatestPipe):
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Vincent HALLER'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Mathieu LUTZ'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]].str.startswith('Calvin Chao')].index, inplace=True)
+
+    # Client to Drop
+    # 'Generic End User'
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')].index, inplace=True)
 
     # Remove "Run Rate" Type  Deals
     df_pipe.drop(df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].index, inplace=True)
@@ -473,7 +485,10 @@ def UpdatePipe(LatestPipe):
     df_master.drop(['Key'], axis=1, inplace=True)
 
     SFPipeAmmount = df_pipe[cols[COL_TOTPRICE]].sum()
-    EstPipeAmmount = df_pipe['Revenu From\nEstinated Qty'].apply(pd.to_numeric, errors='coerce').sum()
+    df_pipe['Revenu-Val'] = df_pipe['Estimated\nQuantity'].apply(pd.to_numeric, errors='coerce')
+    df_pipe['Revenu-Val'] = df_pipe['Revenu-Val'] * df_pipe['Sales Price']
+    EstPipeAmmount = df_pipe['Revenu-Val'].sum()
+    df_pipe.drop('Revenu-Val',axis=1,inplace=True)
 
     df_pipe.columns = df_master.columns
 
@@ -481,6 +496,9 @@ def UpdatePipe(LatestPipe):
 
     for r in dataframe_to_rows(df_pipe, index=False, header=False):
         worksheet.append(r)
+
+    for i in range(HEADERSHIFT,worksheet.max_row+1):
+        worksheet.cell(i,17).value = f'=P{i}*I{i}'
 
     print(f'  - l onglet contient {len(df_pipe)} lignes maintenant')
 
