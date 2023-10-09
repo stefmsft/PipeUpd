@@ -423,7 +423,7 @@ def UpdatePipe(LatestPipe):
     # Load PipeLine Excel File and convert the 'Pipeline Sell Out' Tab to DataFrame
     ####################################
 
-    myworkbook=openpyxl.load_workbook(INPUT_SUIVI_RAW, keep_vba=False)
+    myworkbook=openpyxl.load_workbook(INPUT_SUIVI_RAW, keep_vba=True)
     worksheet= myworkbook['Pipeline Sell Out']
 
     df_master = pd.DataFrame(worksheet.values)
