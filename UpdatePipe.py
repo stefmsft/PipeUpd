@@ -398,6 +398,8 @@ def UpdatePipe(LatestPipe):
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Vincent HALLER'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Mathieu LUTZ'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]].str.startswith('Calvin Chao')].index, inplace=True)
+    # TBD
+    # Retirer Aziz,Hatem,Charlton
 
     # Client to Drop
     # 'Generic End User'
@@ -489,6 +491,13 @@ def UpdatePipe(LatestPipe):
     df_pipe['Revenu-Val'] = df_pipe['Revenu-Val'] * df_pipe['Sales Price']
     EstPipeAmmount = df_pipe['Revenu-Val'].sum()
     df_pipe.drop('Revenu-Val',axis=1,inplace=True)
+
+    try:
+        for c in df_master:
+            if None == c:
+                del df_master[c]
+    except:
+        pass
 
     df_pipe.columns = df_master.columns
 
