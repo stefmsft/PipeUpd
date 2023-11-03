@@ -435,9 +435,10 @@ def UpdatePipe(LatestPipe):
     # Owner to keep
     # 'William ROMAN', 'Corinne CORDEIRO', 'Kajanan SHAN', 'Younes Giaccheri', 'Aziz ABELHAOU', 'Hippolyte FOVIAUX', 'Hatem ABBACI', 'Mehdi Dahbi', 'Gwenael BOJU', 'Charles TEZENAS', Etc ...
     
-    # Owner to drop ??
+    # Owner to drop
     # 'Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao', 'Aziz ABELHAOU', 'Hatem ABBACI', 'Charlton Collin'
-    for name in ['Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao', 'Aziz ABELHAOU', 'Hatem ABBACI', 'Charlton Collin']:
+    #for name in ['Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao', 'Aziz ABELHAOU', 'Hatem ABBACI', 'Charlton Collin']:
+    for name in ['Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao']:
         df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]==name].index, inplace=True)
 
     # Client to Drop
