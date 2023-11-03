@@ -9,6 +9,7 @@ import os
 import warnings
 import sys
 import time
+import re
 from dotenv import load_dotenv
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -91,6 +92,26 @@ def CheckPipeFile(pfile):
 
     return isValid
 
+#Mapping Date to Quarter FYear
+def GetQFFromDate(cdate):
+
+    cm = cdate.month
+    if cm < 4:
+        Quarter = 1
+    else:
+        if cm < 7:
+            Quarter = 2
+        else:
+            if cm < 10:
+                Quarter = 3
+            else:
+                Quarter = 4
+
+    Year = str(cdate.year)[-2:]
+
+    return Quarter, Year
+
+
 #Generic Mapping Functions
 def Mapping_Generic  (Key,Col):
     rtv = ''
@@ -133,26 +154,48 @@ def Mapping_RevEur (Key):
     # We don't car ewhat is done here ... The cell will be replace after by the formula =Pn*In
     # But I leave the code as is ... In case we wish to come back to the previous behavior
 
-    re = Mapping_Generic(Key,'Revenu From\nEstinated Qty')
+    rev = Mapping_Generic(Key,'Revenu From\nEstinated Qty')
 
     try:
 
-        if re != None:
-            if re != '':
+        if rev != None:
+            if rev != '':
                 rowval = df_master.loc[df_master['Key'] == Key]
                 if str(re).startswith('='):
-                    re = rowval['Prix total'].values[0]
+                    rev = rowval['Prix total'].values[0]
                 else:
-                    re = rowval['Estimated\nQuantity'].values[0] * rowval['Prix de vente'].values[0]
+                    rev = rowval['Estimated\nQuantity'].values[0] * rowval['Prix de vente'].values[0]
     except:
         pass
 
 
-    return re
+    return rev
 
 def Mapping_QtrInvoice (Key):
 
-    return Mapping_Generic(Key,'Quarter Invoice\nFacturation')
+     # Rules :
+     # If nothing, leave nothing
+     # if lenght of value is not 2,4 or 6 put nothing
+     # If first letter of value is Q, get the close date and calculate the QnFYyy
+
+    eq = Mapping_Generic(Key,'Quarter Invoice\nFacturation')
+
+    seq = str(eq)
+
+    if seq != '':
+        try:
+            x = re.search("[Q]\d[F][Y]\d\d", seq)
+            if None == x:
+                CloseDate = Mapping_Generic(Key,'Date de clôture')
+                if str(CloseDate) != '':
+                    Quarter,Year = GetQFFromDate(CloseDate)
+                    seq = f'Q{Quarter}FY{Year}'
+    
+        except:
+            pass
+
+
+    return seq
 
 def Mapping_FrCast (Key):
 
@@ -393,13 +436,9 @@ def UpdatePipe(LatestPipe):
     # 'William ROMAN', 'Corinne CORDEIRO', 'Kajanan SHAN', 'Younes Giaccheri', 'Aziz ABELHAOU', 'Hippolyte FOVIAUX', 'Hatem ABBACI', 'Mehdi Dahbi', 'Gwenael BOJU', 'Charles TEZENAS', Etc ...
     
     # Owner to drop ??
-    # 'Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao'
-    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Clement VIEILLEFONT'].index, inplace=True)
-    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Vincent HALLER'].index, inplace=True)
-    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Mathieu LUTZ'].index, inplace=True)
-    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]].str.startswith('Calvin Chao')].index, inplace=True)
-    # TBD
-    # Retirer Aziz,Hatem,Charlton
+    # 'Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao', 'Aziz ABELHAOU', 'Hatem ABBACI', 'Charlton Collin'
+    for name in ['Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao', 'Aziz ABELHAOU', 'Hatem ABBACI', 'Charlton Collin']:
+        df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]==name].index, inplace=True)
 
     # Client to Drop
     # 'Generic End User'
