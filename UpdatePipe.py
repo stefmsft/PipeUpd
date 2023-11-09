@@ -10,6 +10,7 @@ import warnings
 import sys
 import time
 import re
+import shutil
 from dotenv import load_dotenv
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -51,6 +52,17 @@ else:
 ROLLINGFIELD = os.getenv("ROLLINGFIELD")
 if (ROLLINGFIELD == None): ROLLINGFIELD='Date'
 
+BCKUP_PIPE_FILE = os.getenv("BCKUP_PIPE_FILE")
+if (BCKUP_PIPE_FILE == None): BCKUP_PIPE_FILE=False
+
+if BCKUP_PIPE_FILE:
+    BCKUP_DIRECTORY = os.getenv("BCKUP_DIRECTORY")
+    if (BCKUP_DIRECTORY == None): BCKUP_PIPE_FILE=False
+
+if BCKUP_PIPE_FILE:
+    BCKUP_GRANULARITY = os.getenv("BCKUP_GRANULARITY")
+    if (BCKUP_GRANULARITY == None): BCKUP_GRANULARITY="Days"
+
 # To avoid localisation colision
 # Define col index for labels in Pipe file
 # Only done for col name with problem
@@ -65,7 +77,35 @@ COL_SALESMODELNAME=10
 ################################################################
 # Functions Helper
 ################################################################
+def BackupPipeBefore(pipefullpath):
 
+    now = datetime.now()
+
+    # dd/mm/YY
+    dtstr = now.strftime("%Y%m%d-%H")
+
+    filename = os.path.basename(pipefullpath).split('.')
+    if len(filename) == 2:
+        targetbckfn = f'{BCKUP_DIRECTORY}\\{filename[0]}-{dtstr}-bck.{filename[1]}'
+    else:
+        print(f'Error, while building backup filename from {pipefullpath} ')
+        print("No backup done")
+        return
+
+    # Search on the exact name or on a part including only the day
+    if BCKUP_GRANULARITY.lower() == "days":
+        Targetsrch = f'{BCKUP_DIRECTORY}\\{filename[0]}-{now.strftime("%Y%m%d")}*-bck.{filename[1]}'
+    else:
+        Targetsrch = targetbckfn
+
+    files = glob.glob(Targetsrch)
+
+    if len(files) == 0:
+        #Backup Pipe File
+        shutil.copy(pipefullpath, targetbckfn)
+        print(f'Backup file {targetbckfn} as been created')
+
+    return
 
 def GetLatestPipe(idir):
 
@@ -460,6 +500,14 @@ def UpdatePipe(LatestPipe):
     df_pipe['Key'] = df_pipe.apply(lambda row: f'{row["Opportunity Number"]}{row[cols[COL_SALESMODELNAME]]}', axis = 1)
 
     print(f'  - {len(df_pipe)} lignes apres nettoyage')
+
+    ####################################
+    # If Backup option is activated ... Then backup the actual Pipe file before processing.
+    # Naming : name of INPUT_SUIVI_RAW "-yymmdd-hh-bck.xlsx"
+    ####################################
+
+    if BCKUP_PIPE_FILE:
+        BackupPipeBefore(INPUT_SUIVI_RAW)
 
     ####################################
     # Load PipeLine Excel File and convert the 'Pipeline Sell Out' Tab to DataFrame
