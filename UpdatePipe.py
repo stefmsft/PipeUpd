@@ -486,14 +486,20 @@ def UpdatePipe(LatestPipe):
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')].index, inplace=True)
 
     # Remove "Run Rate" Type  Deals
+    df_pipe_RR = df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].copy()
     df_pipe.drop(df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].index, inplace=True)
 
+
     # Cleanup OPTY (remove NaN)
+    df_pipe_RR['Opportunity Number'].fillna("", inplace=True)
     df_pipe['Opportunity Number'].fillna("", inplace=True)
+    df_pipe_RR[cols[COL_SALESMODELNAME]].fillna("", inplace=True)
     df_pipe[cols[COL_SALESMODELNAME]].fillna("", inplace=True)
 
     #Format Dates
+    df_pipe_RR[cols[COL_CREATED]] = df_pipe_RR[cols[COL_CREATED]].apply(pd.to_datetime, format='mixed')
     df_pipe[cols[COL_CREATED]] = df_pipe[cols[COL_CREATED]].apply(pd.to_datetime, format='mixed')
+    df_pipe_RR[cols[COL_CLOSED]] = df_pipe_RR[cols[COL_CLOSED]].apply(pd.to_datetime, format='mixed')
     df_pipe[cols[COL_CLOSED]] = df_pipe[cols[COL_CLOSED]].apply(pd.to_datetime, format='mixed')
 
     # Create Key Columns (Opty+Model)
@@ -515,6 +521,15 @@ def UpdatePipe(LatestPipe):
 
     myworkbook=openpyxl.load_workbook(INPUT_SUIVI_RAW, keep_vba=False)
     worksheet= myworkbook['Pipeline Sell Out']
+
+    shl = myworkbook.sheetnames
+    if "Pipeline Run Rate" in shl:
+        worksheet_RR= myworkbook['Pipeline Run Rate']
+
+        worksheet_RR.delete_rows(1, amount=(worksheet_RR.max_row+1))
+
+        for r in dataframe_to_rows(df_pipe_RR, index=False, header=True):
+            worksheet_RR.append(r)
 
     df_master = pd.DataFrame(worksheet.values)
 
