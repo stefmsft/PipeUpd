@@ -468,6 +468,7 @@ def UpdatePipe(LatestPipe):
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Confidential Information - Do Not Distribute'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]=='Copyright © 2000-2023 salesforce.com, inc. All rights reserved.'].index, inplace=True)
     df_pipe.dropna(subset=[cols[COL_OPTYOWNER]], inplace=True)
+    df_pipe.dropna(subset=[cols[COL_CUSTOMER]], inplace=True)
 
 
     print(f'  - Il contient {len(df_pipe)} lignes')
