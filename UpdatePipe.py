@@ -523,6 +523,10 @@ def UpdatePipe(LatestPipe):
     myworkbook=openpyxl.load_workbook(INPUT_SUIVI_RAW, keep_vba=False)
     worksheet= myworkbook['Pipeline Sell Out']
 
+    ####################################
+    # Creation/Update onglet Run Rate Pipe
+    ####################################
+
     shl = myworkbook.sheetnames
     if "Pipeline Run Rate" in shl:
         worksheet_RR= myworkbook['Pipeline Run Rate']
