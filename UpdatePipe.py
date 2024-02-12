@@ -490,6 +490,11 @@ def UpdatePipe(LatestPipe):
     df_pipe_RR = df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].copy()
     df_pipe.drop(df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].index, inplace=True)
 
+    # Remove Type = "LM,MR,MS"
+    df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='LM'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='MS'].index, inplace=True)
+    df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='MR'].index, inplace=True)
+    df_pipe['Product Line'].fillna("", inplace=True)
 
     # Cleanup OPTY (remove NaN)
     df_pipe_RR['Opportunity Number'].fillna("", inplace=True)
