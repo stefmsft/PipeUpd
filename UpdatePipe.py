@@ -486,27 +486,24 @@ def UpdatePipe(LatestPipe):
     # 'Generic End User'
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')].index, inplace=True)
 
-    # Remove "Run Rate" Type  Deals
-    df_pipe_RR = df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].copy()
-    df_pipe.drop(df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].index, inplace=True)
-
     # Remove Type = "LM,MR,MS"
     df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='LM'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='MS'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='MR'].index, inplace=True)
     df_pipe['Product Line'].fillna("", inplace=True)
 
+
     # Cleanup OPTY (remove NaN)
-    df_pipe_RR['Opportunity Number'].fillna("", inplace=True)
     df_pipe['Opportunity Number'].fillna("", inplace=True)
-    df_pipe_RR[cols[COL_SALESMODELNAME]].fillna("", inplace=True)
     df_pipe[cols[COL_SALESMODELNAME]].fillna("", inplace=True)
 
     #Format Dates
-    df_pipe_RR[cols[COL_CREATED]] = df_pipe_RR[cols[COL_CREATED]].apply(pd.to_datetime, format='mixed')
     df_pipe[cols[COL_CREATED]] = df_pipe[cols[COL_CREATED]].apply(pd.to_datetime, format='mixed')
-    df_pipe_RR[cols[COL_CLOSED]] = df_pipe_RR[cols[COL_CLOSED]].apply(pd.to_datetime, format='mixed')
     df_pipe[cols[COL_CLOSED]] = df_pipe[cols[COL_CLOSED]].apply(pd.to_datetime, format='mixed')
+
+    # Remove "Run Rate" Type  Deals
+    df_pipe_RR = df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].copy()
+    df_pipe.drop(df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].index, inplace=True)
 
     # Create Key Columns (Opty+Model)
     df_pipe['Key'] = df_pipe.apply(lambda row: f'{row["Opportunity Number"]}{row[cols[COL_SALESMODELNAME]]}', axis = 1)
@@ -536,9 +533,9 @@ def UpdatePipe(LatestPipe):
     if "Pipeline Run Rate" in shl:
         worksheet_RR= myworkbook['Pipeline Run Rate']
 
-        worksheet_RR.delete_rows(1, amount=(worksheet_RR.max_row+1))
+        worksheet_RR.delete_rows(2, amount=(worksheet_RR.max_row+1))
 
-        for r in dataframe_to_rows(df_pipe_RR, index=False, header=True):
+        for r in dataframe_to_rows(df_pipe_RR, index=False, header=False):
             worksheet_RR.append(r)
 
     df_master = pd.DataFrame(worksheet.values)
