@@ -164,7 +164,7 @@ def UpdatePipe(LatestPipe):
     COL_OPTYOWNER=4
     COL_CREATE=7
     COL_CUSTOMER=9
-    COL_SALESPN=14
+    COL_SALESPN=15
 
     # Get creation Date for futur usage in the Log Tab
     ctimef = datetime.strptime(time.ctime(os.path.getctime(LatestPipe)), "%a %b %d %H:%M:%S %Y")
@@ -200,12 +200,16 @@ def UpdatePipe(LatestPipe):
     # Remove / Unused Values
     cols = list(df_pipe.columns.values)
 
-    # Keep Only Kaj Team Member
-    lstonw = df_pipe[cols[COL_OPTYOWNER]].unique()
-    for name in ['William ROMAN', 'Corinne CORDEIRO','Kajanan SHAN','Charles TEZENAS']:
-        lstonw = np.delete(lstonw, np.where(lstonw == name), axis=0)
-    for name in lstonw:
+    # Keep Only the actual Team Members
+    for name in ['Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao']:
         df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]==name].index, inplace=True)
+
+    # Keep Only Kaj Team Member
+    #lstonw = df_pipe[cols[COL_OPTYOWNER]].unique()
+    #for name in ['William ROMAN', 'Corinne CORDEIRO','Kajanan SHAN','Charles TEZENAS']:
+    #    lstonw = np.delete(lstonw, np.where(lstonw == name), axis=0)
+    #for name in lstonw:
+    #    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]==name].index, inplace=True)
 
     df_pipe.dropna(subset=[cols[COL_OPTYOWNER]], inplace=True)
     df_pipe.dropna(subset=[cols[COL_CUSTOMER]], inplace=True)
@@ -252,6 +256,7 @@ def UpdatePipe(LatestPipe):
                                "Product: Operating System": "OS",
                                "Opportunity Owner: Full Name": "Propriétaire Opportunité", \
                                "Product Line": "BU", \
+                               "Stage": "STATUS", \
                                "End Customer: Account Name": "Customer name", \
                                "Opportunity Number": "Oppty N°", \
                                "Indirect Account: Account Name": "Reseller", \
@@ -303,27 +308,24 @@ def UpdatePipe(LatestPipe):
     # From :
     # Propriétaire Opportunité, Win Rate, Close Date, Oppty N°, Disti/Sub Disti, Customer name, Project revenu, Référence produit - Modèle, P/N, Vol. oppty, PA Disti HT, Reseller, BU, Key 
     # Target :
-    # Propriétaire Opportunité, Win Rate, Oppty N°, Disti/Sub Disti, Customer name, Project revenu, Référence produit - Modèle, P/N, Vol. oppty, PA Disti HT, Reseller, BU, [ Secteur, OS, STATUS,
+    # Propriétaire Opportunité, Win Rate, Oppty N°, Disti/Sub Disti, Customer name, Project revenu, Référence produit - Modèle, P/N, Vol. oppty, PA Disti HT, Reseller, BU, Secteur, OS, STATUS,
     # Activity, IQR N°, N° Devis, Customer Capacity QTY, Customer Capacity  Value, competitors' information, Status (win/loss/commited/commited at risk/uncommited upside/uncommited), Comment, Next step, Next step schedule, Periode - Invoice schedule ]
  
     # First map the generic columns
     # They will all appear at the end in this order
     # Indirection values from df_master from where "cols" has been set
-    COL_STATUS=6 # STATUS
-    COL_ACTIVITY=8 # ACTIVITY
+    COL_ACTIVITY=1 # ACTIVITY
     COL_IQR=10 # IQR
     COL_CCAPQ=19 # CCAPQ
-    COL_CCAPV=20 # CCAPV
-    COL_COMP=21 # COMP
-    COL_STAGESTAT=22 # STAGESTAT
-    COL_COMMENT=23 # COMMENT
-    COL_NXT=24 # NXT
-    COL_NXTD=25 # NXTD
+    COL_COMP=20 # COMP
+    COL_COMMENT=21 # COMMENT
+    COL_NXT=22 # NXT
+    COL_NXTD=23 # NXTD
 
-    for extracol in [COL_STATUS,COL_ACTIVITY,COL_IQR,COL_CCAPQ,COL_CCAPV,COL_COMP,COL_STAGESTAT,COL_COMMENT,COL_NXT,COL_NXTD]:
+    for extracol in [COL_ACTIVITY,COL_IQR,COL_CCAPQ,COL_COMP,COL_COMMENT,COL_NXT,COL_NXTD]:
         df_pipe[cols[extracol]] = df_pipe['Key'].apply(lambda x: Mapping_Generic(x, extracol))
 
-    COL_PERIOD=5 # PERIOD (order in df_master)
+    COL_PERIOD=6 # PERIOD (order in df_master)
     COL_CLOSE=7 # CLOSEDATE (order in df_pipe)
     # Column Period xform in QFY
     df_pipe[cols[COL_PERIOD]] = df_pipe['Key'].apply(lambda x: Mapping_QtrInvoice(x,COL_PERIOD,COL_CLOSE))
@@ -349,14 +351,14 @@ def UpdatePipe(LatestPipe):
     # Secteur, OS, Propriétaire Opportunité, Win Rate, BU, Periode - Invoice schedule, STATUS, Customer name, Activity, Oppty N°, IQR N°, Reseller, Disti/Sub Disti, Vol. oppty, N° Devis, Référence produit - Modèle, P/N, PA Disti HT, Project revenu,
     # Customer Capacity QTY, Customer Capacity  Value, competitors' information, Status (win/loss/commited/commited at risk/uncommited upside/uncommited), Comment, Next step, Next step schedule
 
-    cols = 'Secteur', 'OS', 'Propriétaire Opportunité', 'Win Rate', 'BU', 'Periode - Invoice schedule', 'STATUS', 'Customer name', 'Activity' , \
+    cols = 'Secteur', 'Activity', 'OS', 'Propriétaire Opportunité', 'Win Rate', 'BU', 'Periode - Invoice schedule', 'STATUS', 'Customer name', \
         'Oppty N°', 'IQR N°', 'Reseller', 'Disti/Sub Disti', 'N° Devis', 'Référence produit - Modèle', 'P/N', 'Vol. oppty', 'PA Disti HT', 'Project revenu', \
-        'Customer Capacity QTY', 'Customer Capacity  Value', "competitors' information", 'Status (win/loss/commited/commited at risk/uncommited upside/uncommited)', 'Comment', 'Next step', 'Next step schedule'
+        'Customer Capacity QTY', "competitors' information", 'Comment', 'Next step', 'Next step schedule'
 
     #Reorg following the content of cols
     df_pipe = df_pipe.reindex(columns=cols)
 
-    df_pipe.columns = df_master.columns
+ #   df_pipe.columns = df_master.columns
 
     worksheet.delete_rows(2, amount=(worksheet.max_row))
 
