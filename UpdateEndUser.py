@@ -201,17 +201,18 @@ def UpdatePipe(LatestPipe):
     cols = list(df_pipe.columns.values)
 
     # Keep Only the actual Team Members
+    df_pipe.dropna(subset=[cols[COL_OPTYOWNER]], inplace=True)
     for name in ['Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao']:
         df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]==name].index, inplace=True)
 
     # Keep Only Kaj Team Member
+    #df_pipe.dropna(subset=[cols[COL_OPTYOWNER]], inplace=True)
     #lstonw = df_pipe[cols[COL_OPTYOWNER]].unique()
     #for name in ['William ROMAN', 'Corinne CORDEIRO','Kajanan SHAN','Charles TEZENAS']:
     #    lstonw = np.delete(lstonw, np.where(lstonw == name), axis=0)
     #for name in lstonw:
     #    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_OPTYOWNER]]==name].index, inplace=True)
 
-    df_pipe.dropna(subset=[cols[COL_OPTYOWNER]], inplace=True)
     df_pipe.dropna(subset=[cols[COL_CUSTOMER]], inplace=True)
 
     # Client to Drop
