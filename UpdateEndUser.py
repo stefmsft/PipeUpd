@@ -158,7 +158,7 @@ def UpdatePipe(LatestPipe):
     # To avoid localisation colision
     # Define col index for labels in Pipe file
     # From :
-    # Opportunity Number, Quote Request Number, End Customer: Main Industry, Product: Operating System, Opportunity Owner: Full Name, Win Rate, Product Line, Created Date, Close Date, End Customer: Account Name, Indirect Account: Account Name, Account Name: Account, Name	Product: Sales Model Name, Quantity, Part Number, Requested Dealer Price, Total Price
+    # Opportunity Number, Quote Number, End Customer: Main Industry, Product: Operating System, Opportunity Owner: Full Name, Win Rate, Product Line, Created Date, Close Date, End Customer: Account Name, Indirect Account: Account Name, Account Name: Account, Name	Product: Sales Model Name, Quantity, Part Number, Requested Dealer Price, Total Price
     COL_OPTYNB=0
     COL_OS=3
     COL_OPTYOWNER=4
@@ -263,7 +263,7 @@ def UpdatePipe(LatestPipe):
                                "Indirect Account: Account Name": "Reseller", \
                                "Account Name: Account Name": "Disti/Sub Disti", \
                                "Quantity": "Vol. oppty", \
-                               "Quote Request Number": "N° Devis",
+                               "Quote Number": "N° Devis",
                                "Product: Sales Model Name": "Référence produit - Modèle", \
                                "Part Number": "P/N", \
                                "Requested Dealer Price": "PA Disti HT", \
