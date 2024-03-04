@@ -1,7 +1,12 @@
+#
+# Script d'integration d'extract Sales Force vers un fichier de suivit B2B avec focus OpTY/Quote/Clains
+#
+# Version : 0.1
+#
+
 import math
 from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.styles import numbers
-from datetime import date,datetime
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import openpyxl
@@ -11,7 +16,6 @@ import warnings
 import sys
 import time
 import re
-import shutil
 from dotenv import load_dotenv
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
@@ -21,6 +25,9 @@ load_dotenv()
 DIRECTORY_PIPE_EU_RAW = os.getenv("DIRECTORY_PIPE_EU_RAW")
 INPUT_SUIVI_EU_RAW = os.getenv("INPUT_SUIVI_EU_RAW")
 OUTPUT_SUIVI_EU_RAW = os.getenv("OUTPUT_SUIVI_EU_RAW")
+
+INPUT_CLAIM_INGRAM = os.getenv("INPUT_CLAIM_INGRAM")
+
 
 SKIP_ROW = os.getenv("SKIP_EU_ROW")
 
@@ -276,6 +283,8 @@ def UpdatePipe(LatestPipe):
     # Load PipeLine Excel File and convert the 'End Customer  Follow - up' Tab to DataFrame
     ####################################
 
+    print(f'- Selection de l onglet End Customer  Follow - up {INPUT_SUIVI_EU_RAW}')
+
     myworkbook=openpyxl.load_workbook(INPUT_SUIVI_EU_RAW, keep_vba=False)
     worksheet= myworkbook['End Customer  Follow - up']
 
@@ -358,8 +367,6 @@ def UpdatePipe(LatestPipe):
 
     #Reorg following the content of cols
     df_pipe = df_pipe.reindex(columns=cols)
-
- #   df_pipe.columns = df_master.columns
 
     worksheet.delete_rows(2, amount=(worksheet.max_row))
 

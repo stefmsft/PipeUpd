@@ -1,3 +1,9 @@
+#
+# Script d'integration d'extract Sales Force vers un fichier de suivit B2B avec focus OpTY/Quote/Clains
+#
+# Version : 1.5
+#
+
 import math
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import numbers
