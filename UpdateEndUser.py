@@ -26,7 +26,7 @@ DIRECTORY_PIPE_EU_RAW = os.getenv("DIRECTORY_PIPE_EU_RAW")
 INPUT_SUIVI_EU_RAW = os.getenv("INPUT_SUIVI_EU_RAW")
 OUTPUT_SUIVI_EU_RAW = os.getenv("OUTPUT_SUIVI_EU_RAW")
 
-INPUT_CLAIM_INGRAM = os.getenv("INPUT_CLAIM_INGRAM")
+INPUT_SUIVI_EU_CLAIMH = os.getenv("INPUT_SUIVI_EU_CLAIMH")
 
 
 SKIP_ROW = os.getenv("SKIP_EU_ROW")
@@ -84,6 +84,24 @@ def GetQFFromDate(cdate):
 
     return Quarter, Year
 
+#Generic Mapping Functions
+def Mapping_Generic_Claim  (Key,Col):
+    rtv = ''
+
+    try:
+        rowval = df_Claim.loc[df_Claim['KeyCl'] == Key]
+        if (len(rowval) != 0):
+            if len(rowval) == 1:
+                rtv = int(rowval.values[0][Col])
+            else:
+                colc = list(rowval.columns)
+                rtv = int(rowval[colc[Col]].sum())
+            if (rtv == None):
+                rtv = 0
+    except:
+        pass
+
+    return rtv
 
 #Generic Mapping Functions
 def Mapping_Generic  (Key,Col):
@@ -160,7 +178,7 @@ def Format_Cell(WS,start,ColIdx,Format):
 
 def UpdatePipe(LatestPipe):
 
-    global df_master,df_pipe
+    global df_master,df_pipe,df_Claim
 
     # To avoid localisation colision
     # Define col index for labels in Pipe file
@@ -186,6 +204,10 @@ def UpdatePipe(LatestPipe):
 
 
     print(f'  - Il contient {len(df_pipe)} lignes')
+
+    #Open Claim history file
+    df_Claim = pd.read_excel(INPUT_SUIVI_EU_CLAIMH, skiprows=0, sheet_name='Claim History')
+
 
     #######################################
     # Etape 1 : Netoyage / Reorganisation des field de l'extract pipe
@@ -335,6 +357,16 @@ def UpdatePipe(LatestPipe):
     for extracol in [COL_ACTIVITY,COL_IQR,COL_CCAPQ,COL_COMP,COL_COMMENT,COL_NXT,COL_NXTD]:
         df_pipe[cols[extracol]] = df_pipe['Key'].apply(lambda x: Mapping_Generic(x, extracol))
 
+    df_pipe['KeyCl'] = df_pipe.apply(lambda row: f'{row["N° Devis"]}{row["P/N"]}', axis = 1)
+    df_Claim['KeyCl'] = df_Claim.apply(lambda row: f'{row["Quote Number"]}{row["Claim PN"]}', axis = 1)
+    df_pipe['Claim Qty'] = df_pipe['KeyCl'].apply(lambda x: Mapping_Generic_Claim(x, 2))
+    df_pipe['Claim Qty'] = df_pipe['Claim Qty'].replace('', 0)
+    df_pipe['Claim Qty'] = df_pipe['Claim Qty'].astype(int)
+    df_pipe['Claim Val'] = df_pipe['KeyCl'].apply(lambda x: Mapping_Generic_Claim(x, 3))
+    df_pipe['Claim Val'] = df_pipe['Claim Val'].replace('', 0)
+    df_pipe['Claim Val'] = df_pipe['Claim Val'].astype(int)
+    df_pipe['Claim Total'] = df_pipe['Claim Qty'] * df_pipe['Claim Val']
+
     COL_PERIOD=6 # PERIOD (order in df_master)
     COL_CLOSE=7 # CLOSEDATE (order in df_pipe)
     # Column Period xform in QFY
@@ -363,6 +395,7 @@ def UpdatePipe(LatestPipe):
 
     cols = 'Secteur', 'Activity', 'OS', 'Propriétaire Opportunité', 'Win Rate', 'BU', 'Periode - Invoice schedule', 'STATUS', 'Customer name', \
         'Oppty N°', 'IQR N°', 'Reseller', 'Disti/Sub Disti', 'N° Devis', 'Référence produit - Modèle', 'P/N', 'Vol. oppty', 'PA Disti HT', 'Project revenu', \
+        'Claim Qty', 'Claim Val', 'Claim Total', \
         'Customer Capacity QTY', "competitors' information", 'Comment', 'Next step', 'Next step schedule'
 
     #Reorg following the content of cols
