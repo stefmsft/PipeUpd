@@ -179,13 +179,16 @@ def Mapping_Generic  (Key,Col):
 def Mapping_Qty (Key):
 
     # Rules :
-    # if a '=' if found, meaning a ref to another cell, I replace this ref with the value of the cell 'Qauntité'
+    # if a '=' if found, meaning a ref to another cell, I replace this ref with the value of the cell 'Quantité'
 
     eq = Mapping_Generic(Key,'Estimated\nQuantity')
 
-    if str(eq).startswith('='):
-        rowval = df_master.loc[df_master['Key'] == Key]
-        eq = rowval['Quantité'].values[0]
+    try:
+        if (str(eq).startswith('=') or str(eq) == ''):
+            rowval = df_master.loc[df_master['Key'] == Key]
+            eq = rowval['Quantité'].values[0]
+    except:
+        pass
 
     return eq
 
@@ -197,7 +200,7 @@ def Mapping_RevEur (Key):
     # if not, I fill the cell with the result of the Estimated Quantity multiplied by the 'Prix de vente'
 
     # Update
-    # We don't car ewhat is done here ... The cell will be replace after by the formula =Pn*In
+    # We don't car what is done here ... The cell will be replace after by the formula =Pn*In
     # But I leave the code as is ... In case we wish to come back to the previous behavior
 
     rev = Mapping_Generic(Key,'Revenu From\nEstinated Qty')
@@ -228,17 +231,17 @@ def Mapping_QtrInvoice (Key):
 
     seq = str(eq)
 
-    if seq != '':
-        try:
-            x = re.search("[Q]\d[F][Y]\d\d", seq)
-            if None == x:
-                CloseDate = Mapping_Generic(Key,'Date de clôture')
-                if str(CloseDate) != '':
-                    Quarter,Year = GetQFFromDate(CloseDate)
-                    seq = f'Q{Quarter}FY{Year}'
-    
-        except:
-            pass
+    # Update : We translate the Close Date in QnFy even if the field is blank - Then it can eventually be changed. As long as it is in the  right format this wont be changed here.
+    try:
+        x = re.search("[Q]\d[F][Y]\d\d", seq)
+        if None == x:
+            CloseDate = Mapping_Generic(Key,'Date de clôture')
+            if str(CloseDate) != '':
+                Quarter,Year = GetQFFromDate(CloseDate)
+                seq = f'Q{Quarter}FY{Year}'
+
+    except:
+        pass
 
 
     return seq
@@ -509,7 +512,7 @@ def UpdatePipe(LatestPipe):
 
     # Remove "Run Rate" Type  Deals
     df_pipe_RR = df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].copy()
-    df_pipe.drop(df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].index, inplace=True)
+#    df_pipe.drop(df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].index, inplace=True)
 
     # Create Key Columns (Opty+Model)
     df_pipe['Key'] = df_pipe.apply(lambda row: f'{row["Opportunity Number"]}{row[cols[COL_SALESMODELNAME]]}', axis = 1)
