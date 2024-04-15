@@ -493,7 +493,13 @@ def UpdatePipe(LatestPipe):
 
     # Client to Drop
     # 'Generic End User'
-    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')].index, inplace=True)
+    # if Estimated Tot Price < 50K
+    COL_TOTPRICE = 9
+    mask = (df_pipe[cols[COL_TOTPRICE]] < 50000) & df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')
+    df_pipe.drop(df_pipe[mask].index, inplace=True)
+    # Remove also the blank tot price for those 'Generic'
+    mask = (df_pipe[cols[COL_TOTPRICE]]).isna() & df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')
+    df_pipe.drop(df_pipe[mask].index, inplace=True)
 
     # Remove Type = "LM,MR,MS"
     df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='LM'].index, inplace=True)
