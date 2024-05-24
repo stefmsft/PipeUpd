@@ -64,6 +64,11 @@ if (BCKUP_PIPE_FILE == None): BCKUP_PIPE_FILE=False
 if BCKUP_PIPE_FILE:
     BCKUP_DIRECTORY = os.getenv("BCKUP_DIRECTORY")
     if (BCKUP_DIRECTORY == None): BCKUP_PIPE_FILE=False
+    else:
+        if BCKUP_PIPE_FILE.lower() == "true":
+            BCKUP_PIPE_FILE = True
+        else:
+            BCKUP_PIPE_FILE = False
 
 if BCKUP_PIPE_FILE:
     BCKUP_GRANULARITY = os.getenv("BCKUP_GRANULARITY")
@@ -526,7 +531,14 @@ def UpdatePipe(LatestPipe):
 
     # Client to Drop
     # 'Generic End User'
-    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')].index, inplace=True)
+    # if Estimated Tot Price < 50K
+    COL_SALESPRICE = 8
+    COL_TOTPRICE = 9
+    mask = (df_pipe[cols[COL_TOTPRICE]] < 50000) & df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')
+    df_pipe.drop(df_pipe[mask].index, inplace=True)
+    # Remove also the blank tot price for those 'Generic'
+    mask = (df_pipe[cols[COL_TOTPRICE]]).isna() & df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')
+    df_pipe.drop(df_pipe[mask].index, inplace=True)
 
     # Remove Type = "LM,MR,MS"
     df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='LM'].index, inplace=True)
@@ -641,7 +653,7 @@ def UpdatePipe(LatestPipe):
 
     SFPipeAmmount = df_pipe[cols[COL_TOTPRICE]].sum()
     df_pipe['Revenu-Val'] = df_pipe['Estimated\nQuantity'].apply(pd.to_numeric, errors='coerce')
-    df_pipe['Revenu-Val'] = df_pipe['Revenu-Val'] * df_pipe['Sales Price']
+    df_pipe['Revenu-Val'] = df_pipe['Revenu-Val'] * df_pipe[cols[COL_SALESPRICE]]
     EstPipeAmmount = df_pipe['Revenu-Val'].sum()
     df_pipe.drop('Revenu-Val',axis=1,inplace=True)
 

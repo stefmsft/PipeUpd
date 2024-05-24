@@ -170,4 +170,4 @@ Include
 *.zip
 *.xml
 settings.json
-ClaimsFile
+ClaimsFile/*
