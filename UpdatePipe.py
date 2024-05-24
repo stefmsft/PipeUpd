@@ -58,7 +58,7 @@ else:
 ROLLINGFIELD = os.getenv("ROLLINGFIELD")
 if (ROLLINGFIELD == None): ROLLINGFIELD='Date'
 
-BCKUP_PIPE_FILE = os.getenv("BCKUP_PIPE_FILE")
+BCKUP_PIPE_FILE = (str(os.getenv("BCKUP_PIPE_FILE")).lower() == 'true' )
 if (BCKUP_PIPE_FILE == None): BCKUP_PIPE_FILE=False
 
 if BCKUP_PIPE_FILE:
@@ -200,7 +200,7 @@ def Mapping_RevEur (Key):
     # if not, I fill the cell with the result of the Estimated Quantity multiplied by the 'Prix de vente'
 
     # Update
-    # We don't car what is done here ... The cell will be replace after by the formula =Pn*In
+    # We don't care what is done here ... The cell will be replace after by the formula =Pn*In
     # But I leave the code as is ... In case we wish to come back to the previous behavior
 
     rev = Mapping_Generic(Key,'Revenu From\nEstinated Qty')
@@ -210,7 +210,7 @@ def Mapping_RevEur (Key):
         if rev != None:
             if rev != '':
                 rowval = df_master.loc[df_master['Key'] == Key]
-                if str(re).startswith('='):
+                if str(rev).startswith('='):
                     rev = rowval['Prix total'].values[0]
                 else:
                     rev = rowval['Estimated\nQuantity'].values[0] * rowval['Prix de vente'].values[0]
@@ -246,9 +246,42 @@ def Mapping_QtrInvoice (Key):
 
     return seq
 
-def Mapping_FrCast (Key):
+def Mapping_FrCast (row):
 
-    return Mapping_Generic(Key,'Forecast projet\nMenu déroulant')
+    Key = row['Key']
+
+    eq = Mapping_Generic(Key,'Forecast projet\nMenu déroulant')
+    seq = str(eq)
+
+    AS = ["LOST = Perdu", "UNCOMMITED = Pas certain", "UNCOMMITED UPSIDE = Certain à 50% du WIN","COMMIT AT RISK = Certain à 75% du WIN","COMMIT = Certain à 100% du WIN","WIN = Gagné"]
+
+# Update : Automatic fill of the column value base on Win Rate column ... If not empty
+    fcast = seq
+    if seq not in AS:
+        try:
+            # rowval = df_master.loc[df_master['Key'] == Key]
+            # WR = rowval['Win Rate'].values[0].replace('%', '')
+            WR = row['Win Rate'].replace('%', '')
+
+            # Check if the value is NaN or space (after converting to string and stripping whitespace)
+            if pd.isna(WR) or str(WR).strip() == '':
+                return ''
+            
+            # Convert the value to a float to handle numeric comparison
+            WR = float(WR)
+            
+            # Number of ranges is the same as the length of the AS array
+            num_ranges = len(AS)
+            range_size = 100 / num_ranges
+            
+            # Find the index in the AS array that corresponds to the value
+            index = min(int((WR - 1) / range_size), num_ranges - 1)
+            fcast = AS[index]
+
+        except:
+            pass
+
+    return fcast
 
 def Mapping_NxtStp (Key):
 
@@ -593,7 +626,8 @@ def UpdatePipe(LatestPipe):
     df_pipe['Quarter Invoice\nFacturation'] = df_pipe['Key'].map(Mapping_QtrInvoice)
 
     # Column Forecast projet
-    df_pipe['Forecast projet\nMenu déroulant'] = df_pipe['Key'].map(Mapping_FrCast)
+    # df_pipe['Forecast projet\nMenu déroulant'] = df_pipe['Key'].map(Mapping_FrCast)
+    df_pipe['Forecast projet\nMenu déroulant'] = df_pipe.apply(Mapping_FrCast, axis=1)
 
     # Column Next Step
     df_pipe['Next Step & Support demandé / Commentaire'] = df_pipe['Key'].map(Mapping_NxtStp)
@@ -626,7 +660,7 @@ def UpdatePipe(LatestPipe):
         worksheet.append(r)
 
     for i in range(HEADERSHIFT,worksheet.max_row+1):
-        worksheet.cell(i,17).value = f'=P{i}*I{i}'
+        worksheet.cell(i,18).value = f'=Q{i}*I{i}'
 
     print(f'  - l onglet contient {len(df_pipe)} lignes maintenant')
 
@@ -641,7 +675,7 @@ def UpdatePipe(LatestPipe):
     # Col L = 10
     Format_Cell(worksheet,3,10,'[$EUR ]#,##0_-')
     # Col Q = 17
-    Format_Cell(worksheet,3,17,'[$EUR ]#,##0_-')
+    Format_Cell(worksheet,3,18,'[$EUR ]#,##0_-')
 
     # Log Pipe Data
     lst = [datetime(ctimef.year,ctimef.month,ctimef.day,0,0), ctimef.isocalendar()[1], worksheet.max_row - 2, SFPipeAmmount, EstPipeAmmount]
