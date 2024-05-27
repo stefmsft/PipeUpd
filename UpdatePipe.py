@@ -63,12 +63,10 @@ if (BCKUP_PIPE_FILE == None): BCKUP_PIPE_FILE=False
 
 if BCKUP_PIPE_FILE:
     BCKUP_DIRECTORY = os.getenv("BCKUP_DIRECTORY")
-    if (BCKUP_DIRECTORY == None): BCKUP_PIPE_FILE=False
+    if (BCKUP_DIRECTORY == None):
+        BCKUP_PIPE_FILE=False
     else:
-        if BCKUP_PIPE_FILE.lower() == "true":
-            BCKUP_PIPE_FILE = True
-        else:
-            BCKUP_PIPE_FILE = False
+        BCKUP_PIPE_FILE = True
 
 if BCKUP_PIPE_FILE:
     BCKUP_GRANULARITY = os.getenv("BCKUP_GRANULARITY")
