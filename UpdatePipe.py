@@ -236,12 +236,11 @@ def Mapping_QtrInvoice (Key):
 
     # Update : We translate the Close Date in QnFy even if the field is blank - Then it can eventually be changed. As long as it is in the  right format this wont be changed here.
     try:
-        pattern = r'^Q[1-4]F\d{2}$'
-        if not (re.match(pattern, seq)):
-            CloseDate = Mapping_Generic(Key,'Date de clôture')
-            if str(CloseDate) != '':
-                Quarter,Year = GetQFFromDate(CloseDate)
-                seq = f'Q{Quarter}FY{Year}'
+
+        CloseDate = Mapping_Generic(Key,'Date de clôture')
+        if str(CloseDate) != '':
+            Quarter,Year = GetQFFromDate(CloseDate)
+            seq = f'Q{Quarter}FY{Year}'
 
     except:
         pass
@@ -553,7 +552,7 @@ def UpdatePipe(LatestPipe):
     df_pipe[cols[COL_CREATED]] = df_pipe[cols[COL_CREATED]].apply(pd.to_datetime, format='mixed')
     df_pipe[cols[COL_CLOSED]] = df_pipe[cols[COL_CLOSED]].apply(pd.to_datetime, format='mixed')
 
-    # Remove "Run Rate" Type  Deals
+    # Copy "Run Rate" Type  Deals - But don't delete the line from the main Dataframe
     df_pipe_RR = df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].copy()
 
     # Create Key Columns (Opty+Model)
