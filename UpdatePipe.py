@@ -541,12 +541,15 @@ def UpdatePipe(LatestPipe):
     df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='LM'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='MS'].index, inplace=True)
     df_pipe.drop(df_pipe.loc[df_pipe['Product Line']=='MR'].index, inplace=True)
-    df_pipe['Product Line'].fillna("", inplace=True)
+    df_pipe['Product Line'] = df_pipe['Product Line'].fillna("")
+    # df_pipe['Product Line'].fillna("", inplace=True) - Deprecated 3.12
 
 
     # Cleanup OPTY (remove NaN)
-    df_pipe['Opportunity Number'].fillna("", inplace=True)
-    df_pipe[cols[COL_SALESMODELNAME]].fillna("", inplace=True)
+    df_pipe['Opportunity Number'] = df_pipe['Opportunity Number'].fillna("")
+    df_pipe[cols[COL_SALESMODELNAME]] = df_pipe[cols[COL_SALESMODELNAME]].fillna("")
+    # df_pipe['Opportunity Number'].fillna("", inplace=True) - Deprecated 3.12 
+    # df_pipe[cols[COL_SALESMODELNAME]].fillna("", inplace=True) - Deprecated 3.12
 
     #Format Dates
     df_pipe[cols[COL_CREATED]] = df_pipe[cols[COL_CREATED]].apply(pd.to_datetime, format='mixed')
