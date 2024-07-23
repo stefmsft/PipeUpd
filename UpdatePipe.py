@@ -619,8 +619,8 @@ def UpdatePipe(LatestPipe):
     # 'Qty\nUnit', 'Revenu projet\nK Euros', 'Quarter Invoice\nFacturation', 'Forecast projet\nMenu déroulant', 'Next Step & Support demandé / Commentaire'
  
     # Cleanup OPTY and Model Name (remove NaN)
-    df_master['Opportunity Number'].fillna("", inplace=True)
-    df_master['Nom du produit'].fillna("", inplace=True)
+    df_master['Opportunity Number'] = df_master['Opportunity Number'].fillna("")
+    df_master['Nom du produit'] = df_master['Nom du produit'].fillna("")
 
     # Create Key Columns (Opty+Model)
     df_master['Key'] = df_master.apply(lambda row: f'{row["Opportunity Number"]}{row["Nom du produit"]}', axis = 1)
