@@ -259,29 +259,34 @@ def Mapping_FrCast (row):
 
 # Update : Automatic fill of the column value base on Win Rate column ... If not empty
     fcast = seq
-    if seq not in AS:
-        try:
-            # rowval = df_master.loc[df_master['Key'] == Key]
-            # WR = rowval['Win Rate'].values[0].replace('%', '')
-            WR = row['Win Rate'].replace('%', '')
 
-            # Check if the value is NaN or space (after converting to string and stripping whitespace)
-            if pd.isna(WR) or str(WR).strip() == '':
-                return ''
-            
-            # Convert the value to a float to handle numeric comparison
-            WR = float(WR)
-            
-            # Number of ranges is the same as the length of the AS array
-            num_ranges = len(AS)
-            range_size = 100 / num_ranges
-            
-            # Find the index in the AS array that corresponds to the value
-            index = min(int((WR - 1) / range_size), num_ranges - 1)
-            fcast = AS[index]
+    Stat = row['Stage']
 
-        except:
-            pass
+    if Stat.lower() == 'closed won':
+        fcast = "WIN = Gagné"
+    else:
+        if seq not in AS:
+            try:
+                # rowval = df_master.loc[df_master['Key'] == Key]
+                # WR = rowval['Win Rate'].values[0].replace('%', '')
+                WR = row['Win Rate'].replace('%', '')
+                # Check if the value is NaN or space (after converting to string and stripping whitespace)
+                if pd.isna(WR) or str(WR).strip() == '':
+                    return ''
+                
+                # Convert the value to a float to handle numeric comparison
+                WR = float(WR)
+                
+                # Number of ranges is the same as the length of the AS array
+                num_ranges = len(AS)
+                range_size = 100 / num_ranges
+                
+                # Find the index in the AS array that corresponds to the value
+                index = min(int((WR - 1) / range_size), num_ranges - 1)
+                fcast = AS[index]
+
+            except:
+                pass
 
     return fcast
 
