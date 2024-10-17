@@ -188,7 +188,7 @@ def UpdatePipe(LatestPipe):
     COL_OS=3
     COL_OPTYOWNER=4
     COL_CREATE=7
-    COL_CUSTOMER=9
+    COL_CUSTOMER=10
     COL_SALESPN=15
 
     # Get creation Date for futur usage in the Log Tab
@@ -213,7 +213,9 @@ def UpdatePipe(LatestPipe):
     # Etape 1 : Netoyage / Reorganisation des field de l'extract pipe
     #######################################
     # From :
-    # Opportunity Owner, Created Date, Close Date, Stage, Opportunity Number, Indirect Account, End Customer, Estimated Total Price, Sales Model Name, Part Number, Estimated Quantity, Sales Price, Account Name, Product Line, Deal Type
+    # Opportunity Number,Quote Number,End Customer: Main Industry,Product: Operating System,Opportunity Owner: Full Name,Win Rate,Product Line,Created Date,Close Date,Stage,End Customer: Account Name,
+    # Indirect Account: Account Name,Account Name: Account Name,Product: Sales Model Name,Quantity,Part Number,Requested Dealer Price,Total Price,Close Reason,Close Description
+
     # Target :
     # Propriétaire Opportunité, Win Rate, Close Date, Oppty N°, Disti/Sub Disti, Customer name, Project revenu, Référence produit - Modèle, P/N, Vol. oppty, PA Disti HT, Reseller, BU, Key
 
@@ -323,8 +325,8 @@ def UpdatePipe(LatestPipe):
     # Redefine the columns indirection values for step 2
     # Secteur, OS, Propriétaire Opportunité, Win Rate, BU, Periode - Invoice schedule, STATUS, Customer name, Activity, Oppty N°, IQR N°, Reseller, Disti/Sub Disti, Vol. oppty, N° Devis, Référence produit - Modèle, P/N, PA Disti HT, Project revenu,
     # Customer Capacity QTY, Customer Capacity  Value, competitors' information, Status (win/loss/commited/commited at risk/uncommited upside/uncommited), Comment, Next step, Next step schedule
-    COL_OPTYNB=9
-    COL_SALESPN=15
+    COL_OPTYNB=11
+    COL_SALESPN=16
     cols = list(df_master.columns.values)
 
     # Cleanup OPTY and Model Name (remove NaN)
@@ -338,21 +340,21 @@ def UpdatePipe(LatestPipe):
     # Etape 2 : Ajout à la fin des colonnes suplementaires à saisie manuelle
     #######################################
     # From :
-    # Propriétaire Opportunité, Win Rate, Close Date, Oppty N°, Disti/Sub Disti, Customer name, Project revenu, Référence produit - Modèle, P/N, Vol. oppty, PA Disti HT, Reseller, BU, Key 
+    # Propriétaire Opportunité, Win Rate, Close Date, Oppty N°, Disti/Sub Disti,Customer name, Project revenu, Référence produit - Modèle, P/N, Vol. oppty, PA Disti HT, Reseller, BU,  Close Reason, Close Description, Key 
     # Target :
-    # Propriétaire Opportunité, Win Rate, Oppty N°, Disti/Sub Disti, Customer name, Project revenu, Référence produit - Modèle, P/N, Vol. oppty, PA Disti HT, Reseller, BU, Secteur, OS, STATUS,
+    # Propriétaire Opportunité, Win Rate, Oppty N°, Disti/Sub Disti, Close Reason, Close Description, Customer name, Project revenu, Référence produit - Modèle, P/N, Vol. oppty, PA Disti HT, Reseller, BU, Secteur, OS, STATUS,
     # Activity, IQR N°, N° Devis, Customer Capacity QTY, Customer Capacity  Value, competitors' information, Status (win/loss/commited/commited at risk/uncommited upside/uncommited), Comment, Next step, Next step schedule, Periode - Invoice schedule ]
  
     # First map the generic columns
     # They will all appear at the end in this order
     # Indirection values from df_master from where "cols" has been set
     COL_ACTIVITY=1 # ACTIVITY
-    COL_IQR=10 # IQR
-    COL_CCAPQ=19 # CCAPQ
-    COL_COMP=20 # COMP
-    COL_COMMENT=21 # COMMENT
-    COL_NXT=22 # NXT
-    COL_NXTD=23 # NXTD
+    COL_IQR=12 # IQR
+    COL_CCAPQ=24 # CCAPQ
+    COL_COMP=25 # COMP
+    COL_COMMENT=26 # COMMENT
+    COL_NXT=27 # NXT
+    COL_NXTD=28 # NXTD
 
     for extracol in [COL_ACTIVITY,COL_IQR,COL_CCAPQ,COL_COMP,COL_COMMENT,COL_NXT,COL_NXTD]:
         df_pipe[cols[extracol]] = df_pipe['Key'].apply(lambda x: Mapping_Generic(x, extracol))
@@ -390,10 +392,10 @@ def UpdatePipe(LatestPipe):
     # Etape 3 : Reorg l'ordre des nouvelles colonnes ajouté
     #######################################
     # Target :
-    # Secteur, OS, Propriétaire Opportunité, Win Rate, BU, Periode - Invoice schedule, STATUS, Customer name, Activity, Oppty N°, IQR N°, Reseller, Disti/Sub Disti, Vol. oppty, N° Devis, Référence produit - Modèle, P/N, PA Disti HT, Project revenu,
+    # Secteur, OS, Propriétaire Opportunité, Win Rate, BU, Periode - Invoice schedule, STATUS,  Close Reason, Close Description, Customer name, Activity, Oppty N°, IQR N°, Reseller, Disti/Sub Disti, Vol. oppty, N° Devis, Référence produit - Modèle, P/N, PA Disti HT, Project revenu,
     # Customer Capacity QTY, Customer Capacity  Value, competitors' information, Status (win/loss/commited/commited at risk/uncommited upside/uncommited), Comment, Next step, Next step schedule
 
-    cols = 'Secteur', 'Activity', 'OS', 'Propriétaire Opportunité', 'Win Rate', 'BU', 'Periode - Invoice schedule', 'STATUS', 'Customer name', \
+    cols = 'Secteur', 'Activity', 'OS', 'Propriétaire Opportunité', 'Win Rate', 'BU', 'Periode - Invoice schedule', 'STATUS', 'Close Reason', 'Close Description','Customer name', \
         'Oppty N°', 'IQR N°', 'Reseller', 'Disti/Sub Disti', 'N° Devis', 'Référence produit - Modèle', 'P/N', 'Vol. oppty', 'PA Disti HT', 'Project revenu', \
         'Claim Qty', 'Claim Val', 'Claim Total', \
         'Customer Capacity QTY', "competitors' information", 'Comment', 'Next step', 'Next step schedule'
