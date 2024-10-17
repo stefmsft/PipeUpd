@@ -187,7 +187,6 @@ def UpdatePipe(LatestPipe):
     COL_OPTYNB=0
     COL_OS=3
     COL_OPTYOWNER=4
-    COL_CREATE=7
     COL_CUSTOMER=10
     COL_SALESPN=15
 
@@ -264,25 +263,16 @@ def UpdatePipe(LatestPipe):
     # Create Key Columns (Opty+Model)
     df_pipe['Key'] = df_pipe.apply(lambda row: f'{row[cols[COL_OPTYNB]]}{row[cols[COL_SALESPN]]}', axis = 1)
 
-    # Delete unused Cols
-    for dropcol in [COL_CREATE]:
-        df_pipe.drop(cols[dropcol],axis=1,inplace=True)
-
-    # Reaj position Close Date after removing Created
-    COL_CLOSED=7
     cols = list(df_pipe.columns.values)
 
     # Column Quarter Invoice
+    COL_CLOSED=8
     df_pipe[cols[COL_CLOSED]] = df_pipe[cols[COL_CLOSED]].apply(pd.to_datetime, format='mixed')
+    # Column Quarter Create
+    COL_CREATE=7
+    df_pipe[cols[COL_CREATE]] = df_pipe[cols[COL_CREATE]].apply(pd.to_datetime, format='mixed')
 
     # # Col numbers starts at 0
-    # cols = list(df_pipe.columns.values)
-    # Cval = cols.pop(len(cols)-1)
-    # cols.insert(1, Cval)
-
-    # #Reorg following the content of cols
-    # df_pipe = df_pipe.reindex(columns=cols)
-
     # Rename Cols
     df_pipe.rename ( columns= {"End Customer: Main Industry": "Secteur",
                                "Product: Operating System": "OS",
@@ -323,7 +313,7 @@ def UpdatePipe(LatestPipe):
     print(f'- Injection / refresh des dernieres OPTY ...')
 
     # Redefine the columns indirection values for step 2
-    # Secteur, OS, Propriétaire Opportunité, Win Rate, BU, Periode - Invoice schedule, STATUS, Customer name, Activity, Oppty N°, IQR N°, Reseller, Disti/Sub Disti, Vol. oppty, N° Devis, Référence produit - Modèle, P/N, PA Disti HT, Project revenu,
+    # Secteur, OS, Propriétaire Opportunité, Win Rate, BU, Periode - Creation Date , Periode - Invoice schedule, STATUS, Customer name, Activity, Oppty N°, IQR N°, Reseller, Disti/Sub Disti, Vol. oppty, N° Devis, Référence produit - Modèle, P/N, PA Disti HT, Project revenu,
     # Customer Capacity QTY, Customer Capacity  Value, competitors' information, Status (win/loss/commited/commited at risk/uncommited upside/uncommited), Comment, Next step, Next step schedule
     COL_OPTYNB=11
     COL_SALESPN=16
@@ -349,12 +339,12 @@ def UpdatePipe(LatestPipe):
     # They will all appear at the end in this order
     # Indirection values from df_master from where "cols" has been set
     COL_ACTIVITY=1 # ACTIVITY
-    COL_IQR=12 # IQR
-    COL_CCAPQ=24 # CCAPQ
-    COL_COMP=25 # COMP
-    COL_COMMENT=26 # COMMENT
-    COL_NXT=27 # NXT
-    COL_NXTD=28 # NXTD
+    COL_IQR=13 # IQR
+    COL_CCAPQ=25 # CCAPQ
+    COL_COMP=26 # COMP
+    COL_COMMENT=27 # COMMENT
+    COL_NXT=28 # NXT
+    COL_NXTD=29 # NXTD
 
     for extracol in [COL_ACTIVITY,COL_IQR,COL_CCAPQ,COL_COMP,COL_COMMENT,COL_NXT,COL_NXTD]:
         df_pipe[cols[extracol]] = df_pipe['Key'].apply(lambda x: Mapping_Generic(x, extracol))
@@ -369,8 +359,13 @@ def UpdatePipe(LatestPipe):
     df_pipe['Claim Val'] = df_pipe['Claim Val'].astype(int)
     df_pipe['Claim Total'] = df_pipe['Claim Qty'] * df_pipe['Claim Val']
 
-    COL_PERIOD=6 # PERIOD (order in df_master)
-    COL_CLOSE=7 # CLOSEDATE (order in df_pipe)
+    COL_PERIOD=6 # PERIOD Create (order in df_master)
+    COL_CREATE=7 # CREATIONDATE (order in df_pipe)
+    # Column Period xform in QFY
+    df_pipe[cols[COL_PERIOD]] = df_pipe['Key'].apply(lambda x: Mapping_QtrInvoice(x,COL_PERIOD,COL_CREATE))
+
+    COL_PERIOD=7 # PERIOD (order in df_master)
+    COL_CLOSE=8 # CLOSEDATE (order in df_pipe)
     # Column Period xform in QFY
     df_pipe[cols[COL_PERIOD]] = df_pipe['Key'].apply(lambda x: Mapping_QtrInvoice(x,COL_PERIOD,COL_CLOSE))
 
@@ -387,6 +382,7 @@ def UpdatePipe(LatestPipe):
 
     cols = list(df_pipe.columns.values)
     df_pipe.drop(cols[COL_CLOSE], axis=1, inplace=True)
+    df_pipe.drop(cols[COL_CREATE], axis=1, inplace=True)
 
     #######################################
     # Etape 3 : Reorg l'ordre des nouvelles colonnes ajouté
@@ -395,7 +391,7 @@ def UpdatePipe(LatestPipe):
     # Secteur, OS, Propriétaire Opportunité, Win Rate, BU, Periode - Invoice schedule, STATUS,  Close Reason, Close Description, Customer name, Activity, Oppty N°, IQR N°, Reseller, Disti/Sub Disti, Vol. oppty, N° Devis, Référence produit - Modèle, P/N, PA Disti HT, Project revenu,
     # Customer Capacity QTY, Customer Capacity  Value, competitors' information, Status (win/loss/commited/commited at risk/uncommited upside/uncommited), Comment, Next step, Next step schedule
 
-    cols = 'Secteur', 'Activity', 'OS', 'Propriétaire Opportunité', 'Win Rate', 'BU', 'Periode - Invoice schedule', 'STATUS', 'Close Reason', 'Close Description','Customer name', \
+    cols = 'Secteur', 'Activity', 'OS', 'Propriétaire Opportunité', 'Win Rate', 'BU', 'Periode - Creation Date' ,'Periode - Invoice schedule', 'STATUS', 'Close Reason', 'Close Description','Customer name', \
         'Oppty N°', 'IQR N°', 'Reseller', 'Disti/Sub Disti', 'N° Devis', 'Référence produit - Modèle', 'P/N', 'Vol. oppty', 'PA Disti HT', 'Project revenu', \
         'Claim Qty', 'Claim Val', 'Claim Total', \
         'Customer Capacity QTY', "competitors' information", 'Comment', 'Next step', 'Next step schedule'
