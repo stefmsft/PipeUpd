@@ -36,9 +36,33 @@ def Format_Cell(WS,start,ColIdx,Format):
 
     return
 
+def Get_ListOfClaimFiles(directoryFilter,year):
+
+    # Initialize an empty list to store valid file paths
+    valid_file_paths = []
+
+    # Loop through integers from 1 to 12
+    for i in range(1, 12 + 1):
+        # Format the string with the current integer
+        file_path = directoryFilter.format(y2=f"{year:02}",w2=f"{i:02}")
+        
+        # Check if the file exists at the formatted path
+        if os.path.exists(file_path):
+            # If it exists, add it to the list of valid file paths
+            valid_file_paths.append(file_path)
+
+    # Print the list of valid file paths
+    print(valid_file_paths)
+    
+    return valid_file_paths
+
+
+
 def GetClaims(CProfil,SrcCol):
 
     df_claims = pd.DataFrame()
+
+    CFL = Get_ListOfClaimFiles(CProfil['FileNameFilter'],25)
 
     print(f'- Traitement du fichier de Claim : {CProfil["Distri Name"]}')
     raw_claims = pd.read_excel(CProfil['FileName'], skiprows=CProfil['Skip'], sheet_name = CProfil['Sheet'])
@@ -97,27 +121,28 @@ def main():
 
     Claims = pd.DataFrame(columns=['Claim Date','Quote Number','Claim Qty','Claim Val','Claim PN'])
     ClaimProfile = [
-        {
-            "Distri Name": "Ingram",
-            "FileName": INPUT_CLAIM_INGRAM, 
-            "Skip": 18, 
-            "Sheet": 'Quotation Claim',
-            "TrgtgCol": ['Invoice Date','GSN','Claim Qty','New Cost','Vendor Part No']
-        },
+ #       {
+ #           "Distri Name": "Ingram",
+ #           "FileNameFilter": INPUT_CLAIM_INGRAM, 
+ #           "Skip": 18, 
+ #           "Sheet": 'Quotation Claim',
+ #           "TrgtgCol": ['Invoice Date','GSN','Claim Qty','New Cost','Vendor Part No']
+ #       },
         {
             "Distri Name": "Tech Data",
-            "FileName": INPUT_CLAIM_TD, 
+            "FileNameFilter": INPUT_CLAIM_TD, 
             "Skip": 0, 
             "Sheet": 'Claim',
             "TrgtgCol": ['Invoice date','Approval number','Qty.','Claim per pcs','Vendor Product Number']
-        },
-        {
-            "Distri Name": "Also",
-            "FileName": INPUT_CLAIM_ALSO, 
-            "Skip": 0, 
-            "Sheet": '107',
-            "TrgtgCol": ['Invoice date','Promotion desc.','Invoice qty','Project price','Part number']
         }
+#        ,
+#        {
+#            "Distri Name": "Also",
+#            "FileNameFilter": INPUT_CLAIM_ALSO, 
+#            "Skip": 0, 
+#            "Sheet": '107',
+#            "TrgtgCol": ['Invoice date','Promotion desc.','Invoice qty','Project price','Part number']
+#        }
         ]
 
     for Prf in ClaimProfile:
