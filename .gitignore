@@ -171,3 +171,8 @@ Include
 *.xml
 settings.json
 ClaimsFile/*
+# Project setup files (added by ProjectSetup scripts)
+ProjectSetup.ps1
+ProjectSetup.sh
+HOW2USEIT.md
+uv.lock
