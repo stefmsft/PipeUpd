@@ -563,6 +563,9 @@ def UpdatePipe(LatestPipe):
     # Copy "Run Rate" Type  Deals - But don't delete the line from the main Dataframe
     df_pipe_RR = df_pipe.loc[df_pipe['Deal Type']=='Run Rate Deal'].copy()
 
+    # Copy "Closed Lost" Opportunities - And remove them from the main Dataframe later
+    df_pipe_CL = df_pipe.loc[df_pipe[cols[COL_STAGE]]=='Closed Lost'].copy()
+
     # Create Key Columns (Opty+Model)
     df_pipe['Key'] = df_pipe.apply(lambda row: f'{row["Opportunity Number"]}{row[cols[COL_SALESMODELNAME]]}', axis = 1)
 
@@ -595,6 +598,23 @@ def UpdatePipe(LatestPipe):
 
         for r in dataframe_to_rows(df_pipe_RR, index=False, header=False):
             worksheet_RR.append(r)
+
+    ####################################
+    # Creation/Update onglet Closed Lost Pipe
+    ####################################
+
+    if "Pipeline Close Lost" in shl:
+        worksheet_CL= myworkbook['Pipeline Close Lost']
+        worksheet_CL.delete_rows(2, amount=(worksheet_CL.max_row+1))
+    else:
+        # Create new sheet if it doesn't exist
+        worksheet_CL = myworkbook.create_sheet("Pipeline Close Lost")
+        # Copy header from main sheet
+        for col_num, cell in enumerate(myworkbook['Pipeline Sell Out'][1], 1):
+            worksheet_CL.cell(row=1, column=col_num, value=cell.value)
+
+    for r in dataframe_to_rows(df_pipe_CL, index=False, header=False):
+        worksheet_CL.append(r)
 
     df_master = pd.DataFrame(worksheet.values)
 
@@ -650,6 +670,9 @@ def UpdatePipe(LatestPipe):
 
     # Remove "Étape:Rejected"
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_STAGE]]=='Rejected'].index, inplace=True)
+
+    # Remove "Closed Lost" opportunities (they are now in their own tab)
+    df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_STAGE]]=='Closed Lost'].index, inplace=True)
 
     # No need of the Key Column anymore
     df_pipe.drop(['Key'], axis=1, inplace=True)

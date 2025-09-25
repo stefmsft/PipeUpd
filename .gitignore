@@ -176,3 +176,6 @@ ProjectSetup.ps1
 ProjectSetup.sh
 HOW2USEIT.md
 uv.lock
+
+# Claude Code documentation
+CLAUDE.md
