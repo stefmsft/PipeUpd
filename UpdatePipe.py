@@ -72,6 +72,12 @@ if BCKUP_PIPE_FILE:
     BCKUP_GRANULARITY = os.getenv("BCKUP_GRANULARITY")
     if (BCKUP_GRANULARITY == None): BCKUP_GRANULARITY="Days"
 
+CURWEEK = os.getenv("CURWEEK")
+if (CURWEEK != None):
+    CURWEEK = int(CURWEEK)
+else:
+    CURWEEK = None
+
 # To avoid localisation colision
 # Define col index for labels in Pipe file
 # Only done for col name with problem
@@ -293,6 +299,50 @@ def Mapping_FrCast (row):
 def Mapping_NxtStp (Key):
 
     return Mapping_Generic(Key,'Next Step & Support demandé / Commentaire')
+
+def GetDynamicWeekColumns():
+    """Generate the 5 dynamic week column names based on current week"""
+    if CURWEEK is not None:
+        current_week = CURWEEK
+        print(f'  - Using test week number: {current_week}')
+    else:
+        current_week = datetime.now().isocalendar()[1]
+        print(f'  - Using actual current week number: {current_week}')
+
+    week_columns = []
+
+    for offset in range(-2, 3):  # -2, -1, 0, +1, +2
+        week_num = current_week + offset
+        # Handle year boundaries - most years have 52 weeks, some have 53
+        if week_num < 1:
+            # Get the actual number of weeks in the previous year
+            prev_year = datetime.now().year - 1
+            last_week_prev_year = datetime(prev_year, 12, 28).isocalendar()[1]  # Week containing Dec 28 is always the last week
+            week_num = last_week_prev_year + week_num
+        elif week_num > 52:
+            # Check if current year actually has 53 weeks
+            current_year = datetime.now().year
+            last_week_current_year = datetime(current_year, 12, 28).isocalendar()[1]
+            if week_num > last_week_current_year:
+                week_num = week_num - last_week_current_year
+
+        week_columns.append(f"Week {week_num}")
+
+    return week_columns
+
+def Mapping_WeekColumn(Key, old_col_name, new_col_name):
+    """Preserve data from existing week columns when renaming"""
+    try:
+        # First check if the new column name already exists in master
+        if new_col_name in df_master.columns:
+            return Mapping_Generic(Key, new_col_name)
+        # If not, check if the old column name exists and map from it
+        elif old_col_name in df_master.columns:
+            return Mapping_Generic(Key, old_col_name)
+        else:
+            return ''  # New column, no existing data
+    except:
+        return ''
 
 def Format_Cell(WS,start,ColIdx,Format):
 
@@ -668,6 +718,26 @@ def UpdatePipe(LatestPipe):
     # Column Next Step
     df_pipe['Next Step & Support demandé / Commentaire'] = df_pipe['Key'].map(Mapping_NxtStp)
 
+    # Dynamic Week Columns (5 columns: Week-2, Week-1, Week, Week+1, Week+2)
+    dynamic_week_columns = GetDynamicWeekColumns()
+    print(f'  - Adding dynamic week columns: {dynamic_week_columns}')
+
+    # Get existing column names that might contain week data (for preservation)
+    existing_week_columns = [col for col in df_master.columns if col and str(col).startswith('Week ')]
+
+    for i, new_week_col in enumerate(dynamic_week_columns):
+        # Try to preserve data from existing week columns if they exist
+        if i < len(existing_week_columns):
+            old_week_col = existing_week_columns[i]
+            df_pipe[new_week_col] = df_pipe['Key'].apply(
+                lambda key: Mapping_WeekColumn(key, old_week_col, new_week_col)
+            )
+        else:
+            # New column, initialize with empty values
+            df_pipe[new_week_col] = df_pipe['Key'].map(
+                lambda key: Mapping_Generic(key, new_week_col)
+            )
+
     # Remove "Étape:Rejected"
     df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_STAGE]]=='Rejected'].index, inplace=True)
 
@@ -697,6 +767,13 @@ def UpdatePipe(LatestPipe):
 
     for r in dataframe_to_rows(df_pipe, index=False, header=False):
         worksheet.append(r)
+
+    # Update Excel column headers for dynamic Week columns (starting at column V = 22)
+    dynamic_week_columns = GetDynamicWeekColumns()
+    print(f'  - Updating Excel column headers for Week columns: {dynamic_week_columns}')
+    for i, week_col_name in enumerate(dynamic_week_columns):
+        col_idx = 22 + i  # V=22, W=23, X=24, Y=25, Z=26
+        worksheet.cell(row=2, column=col_idx).value = week_col_name
 
     for i in range(HEADERSHIFT,worksheet.max_row+1):
         worksheet.cell(i,18).value = f'=Q{i}*I{i}'
