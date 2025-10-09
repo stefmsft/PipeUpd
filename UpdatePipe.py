@@ -487,6 +487,131 @@ def Mapping_NxtStp(Key: str) -> str:
 
     return Mapping_Generic(Key,'Next Step & Support demandé / Commentaire')
 
+def DetectWeekShift(df_master: pd.DataFrame) -> Tuple[int, List[str]]:
+    """Detect if there will be a week shift and return shift amount and existing week columns
+
+    Args:
+        df_master: Master DataFrame containing existing week columns
+
+    Returns:
+        Tuple of (shift_amount, existing_week_columns)
+    """
+    try:
+        current_week = datetime.now().isocalendar()[1] if CURWEEK is None else CURWEEK
+
+        # Find existing week columns in order (should be columns V-Z, positions 22-26)
+        existing_week_columns = []
+        for col in df_master.columns:
+            if col and str(col).startswith('Week '):
+                existing_week_columns.append(str(col))
+
+        if not existing_week_columns:
+            logger.info("No existing week columns found, no shift needed")
+            return 0, []
+
+        # Find the center column (should be column X, the 3rd of 5 columns)
+        if len(existing_week_columns) >= 3:
+            center_column = existing_week_columns[2]  # Column X (0-indexed: V=0, W=1, X=2)
+
+            # Extract week number from center column (e.g., "Week 39" -> 39)
+            if center_column.startswith('Week '):
+                try:
+                    center_week = int(center_column.replace('Week ', ''))
+                    shift_amount = current_week - center_week
+
+                    # Handle year rollover
+                    if shift_amount > 26:  # More than half year forward
+                        shift_amount -= 52  # Assume we went to previous year
+                    elif shift_amount < -26:  # More than half year backward
+                        shift_amount += 52  # Assume we went to next year
+
+                    logger.info(f"Detected week shift: current week {current_week}, center was {center_week}, shift amount: {shift_amount}")
+                    return shift_amount, existing_week_columns
+                except ValueError:
+                    logger.warning(f"Could not parse week number from {center_column}")
+
+        logger.info("Could not determine week shift, assuming no shift")
+        return 0, existing_week_columns
+
+    except Exception as e:
+        logger.error(f"Error detecting week shift: {str(e)}")
+        return 0, []
+
+def ApplyWeekShiftFromHistory(df_master: pd.DataFrame, df_whisto: pd.DataFrame, new_week_columns: List[str]) -> pd.DataFrame:
+    """Apply week shift using data from Week History DataFrame
+
+    Args:
+        df_master: Master DataFrame to update
+        df_whisto: Week History DataFrame containing historical data
+        new_week_columns: List of new week column names (e.g., ['Week 39', 'Week 40', ...])
+
+    Returns:
+        Updated DataFrame with week data from history
+    """
+    try:
+        if df_whisto.empty or not new_week_columns:
+            logger.info("No week shift to apply - empty history or no columns")
+            return df_master
+
+        logger.info(f"Applying week shift using history data for columns: {new_week_columns}")
+
+        # Find existing week columns in df_master
+        existing_week_columns = [col for col in df_master.columns if col and str(col).startswith('Week ')]
+
+        if len(existing_week_columns) < 5:
+            logger.warning(f"Expected 5 week columns, found {len(existing_week_columns)}")
+            return df_master
+
+        # For each row in df_master that has a Key
+        for idx, row in df_master.iterrows():
+            if 'Key' not in row or pd.isna(row['Key']) or str(row['Key']).strip() == '':
+                continue
+
+            key = str(row['Key'])
+
+            # Find this key in the history DataFrame
+            history_rows = df_whisto[df_whisto['key'] == key]
+            if len(history_rows) == 0:
+                # Clear week columns for this key since no history exists
+                for col in existing_week_columns:
+                    if col in df_master.columns:
+                        df_master.at[idx, col] = ''
+                continue
+
+            history_row = history_rows.iloc[0]
+
+            # For each of the 5 week columns in the new structure
+            for col_idx, new_week_col in enumerate(new_week_columns):
+                if col_idx >= len(existing_week_columns):
+                    break  # Safety check
+
+                target_col = existing_week_columns[col_idx]  # V, W, X, Y, Z positions
+
+                # Extract week number from new_week_col (e.g., "Week 39" -> 39)
+                try:
+                    week_num = int(new_week_col.replace('Week ', ''))
+                    history_col = f'W{week_num:02d}'
+
+                    # Get value from history DataFrame
+                    if history_col in history_row and pd.notna(history_row[history_col]):
+                        value = str(history_row[history_col]).strip()
+                        df_master.at[idx, target_col] = value if value != '' else ''
+                    else:
+                        df_master.at[idx, target_col] = ''
+
+                    logger.debug(f"Key {key}: Position {col_idx} ({target_col}) gets {new_week_col} data from {history_col} = '{value if 'value' in locals() else ''}'")
+
+                except ValueError:
+                    logger.warning(f"Could not parse week number from {new_week_col}")
+                    df_master.at[idx, target_col] = ''
+
+        logger.info(f"Week shift from history completed")
+        return df_master
+
+    except Exception as e:
+        logger.error(f"Error applying week shift from history: {str(e)}")
+        return df_master
+
 def GetDynamicWeekColumns() -> List[str]:
     """Generate the 5 dynamic week column names based on current week
 
@@ -520,6 +645,158 @@ def GetDynamicWeekColumns() -> List[str]:
         week_columns.append(f"Week {week_num}")
 
     return week_columns
+
+def CreateWeekHistoryDataFrame() -> pd.DataFrame:
+    """Create a new Week History DataFrame with proper column structure
+
+    Returns:
+        DataFrame with 'key' column and W01-W53 columns
+    """
+    columns = ['key'] + [f'W{i:02d}' for i in range(1, 54)]  # W01 to W53
+    return pd.DataFrame(columns=columns)
+
+def LoadWeekHistoryFromExcel(workbook: openpyxl.Workbook) -> pd.DataFrame:
+    """Load Week History data from Excel tab if it exists
+
+    Args:
+        workbook: Excel workbook to read from
+
+    Returns:
+        DataFrame containing Week History data or empty DataFrame with proper structure
+    """
+    try:
+        if "Week History" in workbook.sheetnames:
+            ws_whisto = workbook['Week History']
+            # Convert to DataFrame
+            df_whisto = pd.DataFrame(ws_whisto.values)
+            if not df_whisto.empty:
+                # Set column names from first row
+                df_whisto.columns = df_whisto.iloc[0]
+                df_whisto = df_whisto.drop(df_whisto.index[0]).reset_index(drop=True)
+                # Ensure we have all required columns
+                expected_columns = ['key'] + [f'W{i:02d}' for i in range(1, 54)]
+                for col in expected_columns:
+                    if col not in df_whisto.columns:
+                        df_whisto[col] = ''
+                # Reorder columns to match expected structure
+                df_whisto = df_whisto.reindex(columns=expected_columns, fill_value='')
+                logger.info(f"Loaded Week History with {len(df_whisto)} rows")
+                return df_whisto
+
+        # If tab doesn't exist or is empty, create new DataFrame
+        logger.info("Week History tab not found or empty, creating new DataFrame")
+        return CreateWeekHistoryDataFrame()
+
+    except Exception as e:
+        logger.warning(f"Error loading Week History: {str(e)}, creating new DataFrame")
+        return CreateWeekHistoryDataFrame()
+
+def UpdateWeekHistoryRow(df_whisto: pd.DataFrame, key: str, week_data: Dict[str, str]) -> pd.DataFrame:
+    """Update or create a row in the Week History DataFrame
+
+    Args:
+        df_whisto: Week History DataFrame
+        key: Unique key for the opportunity
+        week_data: Dictionary mapping week column names to values
+
+    Returns:
+        Updated Week History DataFrame
+    """
+    try:
+        # Find existing row with this key
+        mask = df_whisto['key'] == key
+        existing_rows = df_whisto[mask]
+
+        if len(existing_rows) > 0:
+            # Update existing row
+            row_idx = existing_rows.index[0]
+            for week_col, value in week_data.items():
+                # Convert week column name (e.g., "Week 25") to Week History format (e.g., "W25")
+                if week_col.startswith('Week '):
+                    week_num = week_col.replace('Week ', '')
+                    whisto_col = f'W{int(week_num):02d}'
+                    if whisto_col in df_whisto.columns:
+                        df_whisto.at[row_idx, whisto_col] = value
+        else:
+            # Create new row
+            new_row = {'key': key}
+            # Initialize all week columns to empty
+            for i in range(1, 54):
+                new_row[f'W{i:02d}'] = ''
+
+            # Fill in the provided week data
+            for week_col, value in week_data.items():
+                if week_col.startswith('Week '):
+                    week_num = week_col.replace('Week ', '')
+                    whisto_col = f'W{int(week_num):02d}'
+                    if whisto_col in new_row:
+                        new_row[whisto_col] = value
+
+            # Add new row to DataFrame
+            df_whisto = pd.concat([df_whisto, pd.DataFrame([new_row])], ignore_index=True)
+
+        return df_whisto
+
+    except Exception as e:
+        logger.error(f"Error updating Week History row for key {key}: {str(e)}")
+        return df_whisto
+
+def CleanWeekHistory(df_whisto: pd.DataFrame, df_pipe: pd.DataFrame) -> pd.DataFrame:
+    """Remove rows from Week History that no longer have corresponding keys in df_pipe
+
+    Args:
+        df_whisto: Week History DataFrame
+        df_pipe: Current pipeline DataFrame with Key column
+
+    Returns:
+        Cleaned Week History DataFrame
+    """
+    try:
+        if df_whisto.empty or df_pipe.empty:
+            return df_whisto
+
+        # Get list of current keys from df_pipe
+        current_keys = set(df_pipe['Key'].tolist())
+
+        # Filter df_whisto to keep only rows with keys that still exist in df_pipe
+        initial_count = len(df_whisto)
+        df_whisto_cleaned = df_whisto[df_whisto['key'].isin(current_keys)].copy()
+        cleaned_count = len(df_whisto_cleaned)
+
+        removed_count = initial_count - cleaned_count
+        if removed_count > 0:
+            logger.info(f"Cleaned Week History: removed {removed_count} orphaned rows, keeping {cleaned_count} rows")
+
+        return df_whisto_cleaned
+
+    except Exception as e:
+        logger.error(f"Error cleaning Week History: {str(e)}")
+        return df_whisto
+
+def WriteWeekHistoryToExcel(workbook: openpyxl.Workbook, df_whisto: pd.DataFrame) -> None:
+    """Write Week History DataFrame to Excel, replacing existing tab
+
+    Args:
+        workbook: Excel workbook to write to
+        df_whisto: Week History DataFrame to write
+    """
+    try:
+        # Remove existing Week History tab if it exists
+        if "Week History" in workbook.sheetnames:
+            del workbook["Week History"]
+            logger.debug("Removed existing Week History tab")
+
+        # Create new Week History tab
+        ws_whisto = workbook.create_sheet("Week History")
+
+        # Write data to the sheet
+        for r in dataframe_to_rows(df_whisto, index=False, header=True):
+            ws_whisto.append(r)
+
+        logger.info(f"Written Week History with {len(df_whisto)} rows to Excel")
+
+    except Exception as e:
+        logger.error(f"Error writing Week History to Excel: {str(e)}")
 
 def Mapping_WeekColumn(Key: str, old_col_name: str, new_col_name: str) -> str:
     """Preserve data from existing week columns when renaming
@@ -888,6 +1165,13 @@ def UpdatePipe(LatestPipe: str) -> None:
             raise PipeProcessingError(f"Failed to load tracking workbook {INPUT_SUIVI_RAW}: {str(e)}")
 
         ####################################
+        # Load/Create Week History DataFrame
+        ####################################
+
+        df_whisto = LoadWeekHistoryFromExcel(myworkbook)
+        logger.info(f'Week History loaded with {len(df_whisto)} rows')
+
+        ####################################
         # Creation/Update onglet Run Rate Pipe
         ####################################
 
@@ -974,15 +1258,48 @@ def UpdatePipe(LatestPipe: str) -> None:
         current_week = datetime.now().isocalendar()[1] if CURWEEK is None else CURWEEK
         logger.info(f'Adding dynamic week columns (current week {current_week}): {dynamic_week_columns}')
 
+        ####################################
+        # Detect week shift and copy to Week History BEFORE any updates
+        ####################################
+
+        shift_amount, existing_week_columns = DetectWeekShift(df_master)
+
+        # Copy existing week data to Week History BEFORE any column updates
+        logger.info('Copying existing week data to Week History before any shifts')
+        for _, row in df_master.iterrows():
+            if 'Key' in row and pd.notna(row['Key']) and str(row['Key']).strip() != '':
+                key = str(row['Key'])
+                # Collect the existing week column values
+                week_data = {}
+                for week_col in existing_week_columns:
+                    if week_col in row and pd.notna(row[week_col]) and str(row[week_col]).strip() != '':
+                        week_data[week_col] = str(row[week_col])
+
+                # Update Week History if we have any week data
+                if week_data:
+                    df_whisto = UpdateWeekHistoryRow(df_whisto, key, week_data)
+
+        ####################################
+        # Apply week shift to master data if needed using history data
+        ####################################
+
+        if shift_amount != 0:
+            df_master = ApplyWeekShiftFromHistory(df_master, df_whisto, dynamic_week_columns)
+
+        ####################################
+        # Update dynamic week columns with current week names
+        ####################################
+
         # Get existing column names that might contain week data (for preservation)
         existing_week_columns = [col for col in df_master.columns if col and str(col).startswith('Week ')]
 
         for i, new_week_col in enumerate(dynamic_week_columns):
-            # Try to preserve data from existing week columns if they exist
+            # After shift, df_master has the correct data in positional columns
             if i < len(existing_week_columns):
-                old_week_col = existing_week_columns[i]
+                old_week_col = existing_week_columns[i]  # This is the positional column (Week 37, Week 38, etc.)
+                # Get the shifted data from the positional column in df_master
                 df_pipe[new_week_col] = df_pipe['Key'].apply(
-                    lambda key: Mapping_WeekColumn(key, old_week_col, new_week_col)
+                    lambda key: Mapping_Generic(key, old_week_col)  # Use old_week_col which has the shifted data
                 )
             else:
                 # New column, initialize with empty values
@@ -990,11 +1307,18 @@ def UpdatePipe(LatestPipe: str) -> None:
                     lambda key: Mapping_Generic(key, new_week_col)
                 )
 
+
         # Remove "Étape:Rejected"
         df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_STAGE]]=='Rejected'].index, inplace=True)
 
         # Remove "Closed Lost" opportunities (they are now in their own tab)
         df_pipe.drop(df_pipe.loc[df_pipe[cols[COL_STAGE]]=='Closed Lost'].index, inplace=True)
+
+        ####################################
+        # Clean Week History before dropping Key column
+        ####################################
+
+        df_whisto = CleanWeekHistory(df_whisto, df_pipe)
 
         # No need of the Key Column anymore
         df_pipe.drop(['Key'], axis=1, inplace=True)
@@ -1055,6 +1379,12 @@ def UpdatePipe(LatestPipe: str) -> None:
         if "Pipe Analysis" in myworkbook.sheetnames:
             logger.info('Refreshing Pipe Analysis sheet')
             UpdatePipeAnalysis(myworkbook,df_log)
+
+        ####################################
+        # Write Week History back to Excel
+        ####################################
+
+        WriteWeekHistoryToExcel(myworkbook, df_whisto)
 
         myworkbook.save(OUTPUT_SUIVI_RAW)
         logger.info(f'Saving to: {OUTPUT_SUIVI_RAW}')
