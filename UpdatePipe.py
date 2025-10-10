@@ -52,21 +52,63 @@ import logging
 from typing import List, Optional, Tuple, Dict, Any
 from pathlib import Path
 from dotenv import load_dotenv
+from colorama import Fore, Style, init
+
+# Initialize colorama for Windows compatibility
+init(autoreset=True)
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
-# Configure logging
+# Custom formatter for colored DEBUG messages
+class ColoredFormatter(logging.Formatter):
+    def format(self, record):
+        # Get the standard formatted message
+        formatted = super().format(record)
+
+        # Apply yellow color to DEBUG messages after the timestamp
+        if record.levelname == 'DEBUG':
+            # Split at the first " - " after timestamp to preserve timestamp formatting
+            parts = formatted.split(' - ', 2)
+            if len(parts) >= 3:
+                timestamp = parts[0]
+                level = parts[1]
+                message = parts[2]
+                return f"{timestamp} - {Fore.YELLOW}{level} - {message}{Style.RESET_ALL}"
+
+        return formatted
+
+# Configure logging with proper encoding support and colored formatter
+# Note: actual log level will be set after loading .env file
+file_handler = logging.FileHandler('updatepipe.log', encoding='utf-8')
+console_handler = logging.StreamHandler(sys.stdout)
+
+# Apply custom formatter to console only (file should remain uncolored)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+console_handler.setFormatter(ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s'))
+
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('updatepipe.log'),
-        logging.StreamHandler()
-    ]
+    level=logging.INFO,  # This will be updated after loading .env
+    handlers=[file_handler, console_handler]
 )
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+# Configure logging level from environment
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+log_level_mapping = {
+    'DEBUG': logging.DEBUG,
+    'INFO': logging.INFO,
+    'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR,
+    'CRITICAL': logging.CRITICAL
+}
+actual_log_level = log_level_mapping.get(LOG_LEVEL, logging.INFO)
+
+# Update logging level based on environment configuration
+logger.setLevel(actual_log_level)
+for handler in logging.getLogger().handlers:
+    handler.setLevel(actual_log_level)
 
 DIRECTORY_PIPE_RAW = os.getenv("DIRECTORY_PIPE_RAW")
 INPUT_SUIVI_RAW = os.getenv("INPUT_SUIVI_RAW")
@@ -152,6 +194,43 @@ class DataValidationError(Exception):
 ################################################################
 # Configuration Validation
 ################################################################
+def display_environment_config() -> None:
+    """Display all environment variables and their values in DEBUG mode"""
+    if logger.getEffectiveLevel() <= logging.DEBUG:
+        logger.debug("="*60)
+        logger.debug("ENVIRONMENT CONFIGURATION")
+        logger.debug("="*60)
+
+        # Core configuration
+        logger.debug(f"DIRECTORY_PIPE_RAW = {repr(DIRECTORY_PIPE_RAW)}")
+        logger.debug(f"INPUT_SUIVI_RAW = {repr(INPUT_SUIVI_RAW)}")
+        logger.debug(f"OUTPUT_SUIVI_RAW = {repr(OUTPUT_SUIVI_RAW)}")
+
+        # Data processing configuration
+        logger.debug(f"SKIP_ROW = {SKIP_ROW} (default: 12)")
+        logger.debug(f"GRANULARITE = {repr(GRANULARITE)} (default: 'Date')")
+        logger.debug(f"GRANULARITE_COL = {GRANULARITE_COL} (default: 0)")
+
+        # Analysis configuration
+        logger.debug(f"NORMAXDELTA = {NORMAXDELTA} (default: 10000000)")
+        logger.debug(f"ROLLINGWINDOWS = {ROLLINGWINDOWS} (default: 31)")
+        logger.debug(f"ROLLINGFIELD = {repr(ROLLINGFIELD)} (default: 'Date')")
+
+        # Testing configuration
+        logger.debug(f"CURWEEK = {CURWEEK} (default: None - use current week)")
+
+        # Backup configuration
+        logger.debug(f"BCKUP_PIPE_FILE = {BCKUP_PIPE_FILE} (default: False)")
+        if BCKUP_PIPE_FILE:
+            logger.debug(f"BCKUP_DIRECTORY = {repr(globals().get('BCKUP_DIRECTORY', 'Not set'))}")
+            logger.debug(f"BCKUP_GRANULARITY = {repr(globals().get('BCKUP_GRANULARITY', 'days'))}")
+
+        # Logging configuration
+        logger.debug(f"LOG_LEVEL = {repr(LOG_LEVEL)} (default: 'INFO')")
+        logger.debug(f"Effective log level = {logging.getLevelName(logger.getEffectiveLevel())}")
+
+        logger.debug("="*60)
+
 def validate_configuration() -> None:
     """Validate all required configuration parameters"""
     required_configs = {
@@ -221,7 +300,10 @@ def GetLatestPipe(idir: str) -> str:
             raise PipeProcessingError(f"No Excel files found in directory: {idir}")
 
         latest_file = max(files, key=os.path.getctime)
-        logger.info(f"Latest pipe file found: {latest_file}")
+        # Create colored debug message for latest pipe file
+        filename = os.path.basename(latest_file)
+        colored_latest_message = f"Latest pipe file found: {Fore.GREEN}{filename}{Style.RESET_ALL}"
+        logger.debug(colored_latest_message)
         return latest_file
     except Exception as e:
         logger.error(f"Error finding latest pipe file: {str(e)}")
@@ -1032,7 +1114,10 @@ def UpdatePipe(LatestPipe: str) -> None:
     """Main function to update pipe data with enhanced error handling"""
     global df_master
 
-    logger.info(f"Starting pipe update process with file: {LatestPipe}")
+    # Create colored debug message for pipe update start
+    filename = os.path.basename(LatestPipe)
+    colored_start_message = f"Starting pipe update process with file: {Fore.GREEN}{filename}{Style.RESET_ALL}"
+    logger.debug(colored_start_message)
 
     try:
         # Validate input file
@@ -1049,7 +1134,10 @@ def UpdatePipe(LatestPipe: str) -> None:
         # Load Latest Pipe File
         ####################################
 
-        logger.info(f'Using pipe file: {LatestPipe}')
+        # Create colored log message for pipe file
+        filename = os.path.basename(LatestPipe)
+        colored_message = f'Using pipe file: {Fore.GREEN}{filename}{Style.RESET_ALL}'
+        logger.info(colored_message)
         # Skip SKIP_ROW if extract made with header details. Depending on the header lines this value can be updated from .env file
         try:
             df_pipe = pd.read_excel(LatestPipe, skiprows=SKIP_ROW)
@@ -1203,7 +1291,10 @@ def UpdatePipe(LatestPipe: str) -> None:
 
         df_master = pd.DataFrame(worksheet.values)
 
-        logger.info(f'Loading Pipeline Sell Out sheet from {INPUT_SUIVI_RAW}')
+        # Create colored log message for loading file
+        input_filename = os.path.basename(INPUT_SUIVI_RAW)
+        colored_loading_message = f'Loading Pipeline Sell Out sheet from {Fore.GREEN}{input_filename}{Style.RESET_ALL}'
+        logger.info(colored_loading_message)
 
 
         # Drop first row
@@ -1387,7 +1478,10 @@ def UpdatePipe(LatestPipe: str) -> None:
         WriteWeekHistoryToExcel(myworkbook, df_whisto)
 
         myworkbook.save(OUTPUT_SUIVI_RAW)
-        logger.info(f'Saving to: {OUTPUT_SUIVI_RAW}')
+        # Create colored log message for saving file
+        output_filename = os.path.basename(OUTPUT_SUIVI_RAW)
+        colored_saving_message = f'Saving to: {Fore.GREEN}{output_filename}{Style.RESET_ALL}'
+        logger.info(colored_saving_message)
 
     except Exception as e:
         logger.error(f"Error during pipe update: {str(e)}")
@@ -1400,6 +1494,9 @@ def main() -> None:
     """Main function with comprehensive error handling and validation"""
     try:
         logger.info("Starting UpdatePipe application")
+
+        # Display environment configuration in DEBUG mode
+        display_environment_config()
 
         # Validate configuration first
         validate_configuration()
@@ -1421,7 +1518,10 @@ def main() -> None:
                     raise PipeProcessingError(f'Invalid Pipe file: {sys.argv[1]}')
         else:
             LatestPipe = GetLatestPipe(DIRECTORY_PIPE_RAW)
-            logger.info(f"Processing latest file: {LatestPipe}")
+            # Create colored debug message for processing latest file
+            filename = os.path.basename(LatestPipe)
+            colored_processing_message = f"Processing latest file: {Fore.GREEN}{filename}{Style.RESET_ALL}"
+            logger.debug(colored_processing_message)
 
         # Process files
         if loopProc:
