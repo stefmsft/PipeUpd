@@ -5,7 +5,7 @@ This script integrates Salesforce pipeline export data (XLS/XLSX) into an existi
 tracking file (XLSM) for B2B sales opportunity management. The system focuses on
 Opportunity (OpTY), Quotes, and Claims tracking while preserving manually entered data.
 
-Version: 2.0
+Version: 2.0000
 
 Enhancement Summary:
 - Added comprehensive logging system with rotating file handler
@@ -59,13 +59,24 @@ init(autoreset=True)
 
 warnings.filterwarnings('ignore', category=UserWarning, module='openpyxl')
 
-# Custom formatter for colored DEBUG messages
+################################################################
+# Version Information
+################################################################
+VERSION_MAJOR = 2
+VERSION_MINOR = "0000"
+VERSION_STRING = f"{VERSION_MAJOR}.{VERSION_MINOR}"
+
+# Excel format specifications
+V1_COLUMN_COUNT = 21  # Original format (without Week columns)
+V2_COLUMN_COUNT = 26  # Current format (with 5 Week columns)
+
+# Custom formatter for colored DEBUG and ERROR messages
 class ColoredFormatter(logging.Formatter):
     def format(self, record):
         # Get the standard formatted message
         formatted = super().format(record)
 
-        # Apply yellow color to DEBUG messages after the timestamp
+        # Apply colors to specific log levels after the timestamp
         if record.levelname == 'DEBUG':
             # Split at the first " - " after timestamp to preserve timestamp formatting
             parts = formatted.split(' - ', 2)
@@ -74,6 +85,14 @@ class ColoredFormatter(logging.Formatter):
                 level = parts[1]
                 message = parts[2]
                 return f"{timestamp} - {Fore.YELLOW}{level} - {message}{Style.RESET_ALL}"
+        elif record.levelname == 'ERROR':
+            # Apply red color to ERROR messages
+            parts = formatted.split(' - ', 2)
+            if len(parts) >= 3:
+                timestamp = parts[0]
+                level = parts[1]
+                message = parts[2]
+                return f"{timestamp} - {Fore.RED}{level} - {message}{Style.RESET_ALL}"
 
         return formatted
 
@@ -198,8 +217,14 @@ def display_environment_config() -> None:
     """Display all environment variables and their values in DEBUG mode"""
     if logger.getEffectiveLevel() <= logging.DEBUG:
         logger.debug("="*60)
-        logger.debug("ENVIRONMENT CONFIGURATION")
+        logger.debug("PIPEUPDUV CONFIGURATION")
         logger.debug("="*60)
+
+        # Version information
+        logger.debug(f"VERSION = {VERSION_STRING} (Major: {VERSION_MAJOR}, Minor: {VERSION_MINOR})")
+        logger.debug(f"Excel V1 format = {V1_COLUMN_COUNT} columns")
+        logger.debug(f"Excel V2 format = {V2_COLUMN_COUNT} columns")
+        logger.debug("-" * 60)
 
         # Core configuration
         logger.debug(f"DIRECTORY_PIPE_RAW = {repr(DIRECTORY_PIPE_RAW)}")
@@ -855,6 +880,39 @@ def CleanWeekHistory(df_whisto: pd.DataFrame, df_pipe: pd.DataFrame) -> pd.DataF
         logger.error(f"Error cleaning Week History: {str(e)}")
         return df_whisto
 
+def UpgradeFormatV1toV2(worksheet: openpyxl.worksheet.worksheet.Worksheet) -> None:
+    """Upgrade Excel format from V1 (21 columns) to V2 (26 columns) by adding Week columns
+
+    Args:
+        worksheet: Excel worksheet to upgrade
+    """
+    try:
+        logger.info("Upgrading Excel format from V1 (21 columns) to V2 (26 columns)")
+
+        # V2 adds 5 Week columns at the end (columns V, W, X, Y, Z)
+        # Generate current week column names
+        dynamic_week_columns = GetDynamicWeekColumns()
+
+        # Find the last column with data
+        max_col = worksheet.max_column
+
+        # Add headers for the 5 new Week columns (row 2 is the header row)
+        for i, week_col_name in enumerate(dynamic_week_columns):
+            col_idx = max_col + 1 + i  # Add after existing columns
+            worksheet.cell(row=2, column=col_idx).value = week_col_name  # Header row 2
+
+        # Initialize empty values for all data rows for the new columns
+        for row_num in range(3, worksheet.max_row + 1):  # Start from row 3 (data rows)
+            for i in range(5):  # 5 new columns
+                col_idx = max_col + 1 + i
+                worksheet.cell(row=row_num, column=col_idx).value = ""
+
+        logger.info(f"Successfully upgraded Excel format: added {len(dynamic_week_columns)} Week columns")
+
+    except Exception as e:
+        logger.error(f"Error upgrading Excel format V1 to V2: {str(e)}")
+        raise PipeProcessingError(f"Failed to upgrade Excel format: {str(e)}")
+
 def WriteWeekHistoryToExcel(workbook: openpyxl.Workbook, df_whisto: pd.DataFrame) -> None:
     """Write Week History DataFrame to Excel, replacing existing tab
 
@@ -1288,6 +1346,24 @@ def UpdatePipe(LatestPipe: str) -> None:
 
         for r in dataframe_to_rows(df_pipe_CL, index=False, header=False):
             worksheet_CL.append(r)
+
+        ####################################
+        # Version Detection and Excel Format Upgrade
+        ####################################
+
+        # Detect Excel file version based on column count
+        excel_column_count = worksheet.max_column
+        logger.debug(f"Detected Excel file with {excel_column_count} columns")
+
+        if excel_column_count == V1_COLUMN_COUNT:
+            logger.warning(f"Detected V1 Excel format ({V1_COLUMN_COUNT} columns). Upgrading to V2 format...")
+            UpgradeFormatV1toV2(worksheet)
+            excel_column_count = worksheet.max_column  # Update count after upgrade
+            logger.info(f"Excel format upgraded to V2 ({excel_column_count} columns)")
+        elif excel_column_count == V2_COLUMN_COUNT:
+            logger.debug(f"Excel file is already V2 format ({V2_COLUMN_COUNT} columns)")
+        else:
+            logger.warning(f"Unexpected Excel format: {excel_column_count} columns (expected {V1_COLUMN_COUNT} or {V2_COLUMN_COUNT})")
 
         df_master = pd.DataFrame(worksheet.values)
 
