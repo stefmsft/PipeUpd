@@ -1,0 +1,44 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "uv: Run Tests",
+            "type": "shell",
+            "command": "uv",
+            "args": ["run", "pytest", "tests"],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+        {
+            "label": "uv: Run Tests with Coverage",
+            "type": "shell",
+            "command": "uv",
+            "args": ["run", "pytest", "--cov=src", "tests"],
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+        {
+            "label": "uv: Run Current File",
+            "type": "shell",
+            "command": "uv",
+            "args": ["run", "python", "${file}"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        }
+    ]
+}

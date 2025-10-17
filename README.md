@@ -88,6 +88,7 @@ The tool updates the Excel file with:
 - **Pipeline Run Rate** sheet: Run rate opportunities
 - **Pipeline Close Lost** sheet: Closed lost opportunities
 - **Week History** sheet: Complete historical tracking of all week data (W01-W53)
+- **Owner Opty Tracking** sheet: Unique opportunity counts per owner per week (W01-W53)
 - **Pipe Log** sheet: Historical tracking data
 - **Pipe Analysis** sheet: Trend analysis and charts
 
@@ -204,3 +205,74 @@ The test suite ensures that:
 - Historical data is preserved and accessible
 - Excel output matches expected week mapping
 - System handles various shift scenarios (forward, backward, year boundaries)
+
+## Owner Opportunity Tracking
+
+The system tracks unique opportunities created per week by each sales owner:
+
+### Features
+- **Unique Counting**: Counts distinct opportunity numbers (not total rows)
+- **Weekly Granularity**: Tracks opportunities by ISO week number (W01-W53)
+- **Year Filtering**: Only counts opportunities from the current year
+- **Owner Filtering**: Supports excluding specific owners via configuration
+- **Maximum Preservation**: Never decreases counts - always keeps the maximum value seen
+- **Persistent Storage**: Owner rows are never deleted, even if owner has no current opportunities
+
+### Configuration
+
+Exclude specific owners from tracking in `.env`:
+```env
+# Comma-separated list of owners to exclude
+EXCLUDED_OPTY_OWNERS=John DOE,Jane SMITH,Old Owner
+```
+
+### Debugging Tool
+
+The `debug_owner_week.py` script helps investigate opportunity counts for specific owners and weeks:
+
+**Usage:**
+```bash
+# Check opportunities for a specific owner and week
+python debug_owner_week.py "Owner Name" 43
+
+# Using uv
+uv run python debug_owner_week.py "Aya Bedida" 41
+```
+
+**What it shows:**
+- Total opportunities found for the owner
+- Unique opportunity count for the specified week
+- Detailed list of each unique opportunity with:
+  - Opportunity number
+  - Customer name
+  - Quantity and price
+  - Creation date
+- Warnings for future-dated opportunities
+- Duplicate detection (same opportunity on multiple rows)
+
+**Example output:**
+```
+================================================================================
+Searching for opportunities: Owner='Aya Bedida', Week=41
+================================================================================
+
+Loading pipe file: ASUS BTB PIPELINE - Stef-2025-10-10-06-00-11.xlsx
+Found 981 total opportunities for 'user'
+Found 8 total rows in Week 41 of 2025
+Found 2 duplicate opportunity numbers (keeping max values)
+Unique opportunities: 6
+
+Owner                     Opty Number     Customer                       Qty        Total Price     Created Date
+--------------------------------------------------------------------------------------------------------------
+user                OP0000271712    Mairie de Fort de France       1          €1,719          2025-10-06
+user                OP0000271714    Mairie de Fort de France       1          €1,719          2025-10-06
+...
+
+Total unique opportunities: 6
+```
+
+**Common use cases:**
+- Verify opportunity counts match between tab and source data
+- Investigate discrepancies in weekly tracking
+- Identify future-dated or duplicate opportunities
+- Understand which opportunities are being counted for a specific owner/week
