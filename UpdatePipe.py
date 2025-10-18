@@ -1099,6 +1099,134 @@ def ExtractOwnerOpptyByWeek(df_pipe: pd.DataFrame) -> Dict[str, Dict[str, int]]:
         logger.error(f"Error extracting owner opportunity counts: {str(e)}")
         return {}
 
+def ExtractOwnerOpptyDetails(df_pipe: pd.DataFrame) -> pd.DataFrame:
+    """Extract detailed opportunity information for the last 5 weeks (including current week)
+
+    Creates a table with one row per unique opportunity in the last 5 weeks.
+
+    Args:
+        df_pipe: Pipeline DataFrame with opportunity data
+
+    Returns:
+        DataFrame with columns: owner, week, details
+        - owner: Opportunity owner name
+        - week: "Week NN" format
+        - details: Concatenated string with opty info (OpptyNum - Customer - Qty - Price - Date)
+    """
+    try:
+        # Get column names
+        owner_col = df_pipe.columns[COL_OPTYOWNER]
+        created_col = df_pipe.columns[COL_CREATED]
+        opty_col = df_pipe.columns[4]  # Opportunity Number column
+        customer_col = df_pipe.columns[COL_CUSTOMER]
+        qty_col = df_pipe.columns[7]  # Quantity column
+        price_col = df_pipe.columns[COL_TOTPRICE]
+
+        # Get today's date and current year/week for filtering
+        today = datetime.now()
+        current_year = today.year
+        current_week = datetime.now().isocalendar()[1] if CURWEEK is None else CURWEEK
+
+        # Calculate last 5 weeks (including current week)
+        # Handle year boundary
+        last_5_weeks = []
+        for offset in range(-4, 1):  # -4, -3, -2, -1, 0 (last 4 weeks + current week)
+            week_num = current_week + offset
+            # Handle year boundaries
+            if week_num < 1:
+                prev_year = datetime.now().year - 1
+                last_week_prev_year = datetime(prev_year, 12, 28).isocalendar()[1]
+                week_num = last_week_prev_year + week_num
+            elif week_num > 52:
+                current_year_check = datetime.now().year
+                last_week_current_year = datetime(current_year_check, 12, 28).isocalendar()[1]
+                if week_num > last_week_current_year:
+                    week_num = week_num - last_week_current_year
+            last_5_weeks.append(week_num)
+
+        logger.debug(f"Extracting details for last 5 weeks: {last_5_weeks}")
+
+        # List to store detail rows
+        detail_rows = []
+
+        # Track unique opportunities per owner/week to avoid duplicates
+        seen_opties = set()
+
+        # Iterate through pipe data
+        for _, row in df_pipe.iterrows():
+            owner = sanitize_string_value(row[owner_col])
+            created_date = row[created_col]
+            opty_num = sanitize_string_value(row[opty_col])
+            customer = sanitize_string_value(row[customer_col])
+            qty = sanitize_numeric_value(row[qty_col])
+            price = sanitize_numeric_value(row[price_col])
+
+            # Skip if essential fields are invalid
+            if owner == '' or pd.isna(created_date) or opty_num == '':
+                continue
+
+            # Skip excluded owners
+            if owner in EXCLUDED_OPTY_OWNERS:
+                continue
+
+            # Process date and extract week
+            try:
+                if isinstance(created_date, str):
+                    created_date = pd.to_datetime(created_date, format='mixed')
+
+                # Filter out future dates
+                if created_date > today:
+                    continue
+
+                # Filter out opportunities not from current year
+                if created_date.year != current_year:
+                    continue
+
+                week_num = created_date.isocalendar()[1]
+
+                # Only process if in last 5 weeks
+                if week_num not in last_5_weeks:
+                    continue
+
+                # Create unique identifier to avoid duplicate rows for same opportunity
+                unique_key = f"{owner}|{week_num}|{opty_num}"
+                if unique_key in seen_opties:
+                    continue  # Skip duplicate
+                seen_opties.add(unique_key)
+
+                # Format the details string
+                # Format: OpptyNum - Customer - Qty - Price - Date
+                date_str = created_date.strftime('%Y-%m-%d')
+                qty_str = f"{int(qty)}" if qty > 0 else ""
+                price_str = f"€{int(price):,}" if price > 0 else ""
+
+                details = f"{opty_num} - {customer} - {qty_str} - {price_str} - {date_str}"
+
+                # Add row to results
+                detail_rows.append({
+                    'owner': owner,
+                    'week': f"Week {week_num:02d}",
+                    'details': details
+                })
+
+            except Exception as e:
+                logger.debug(f"Error processing row for details: {str(e)}")
+                continue
+
+        # Create DataFrame from collected rows
+        df_details = pd.DataFrame(detail_rows, columns=['owner', 'week', 'details'])
+
+        # Sort by owner, then week
+        if not df_details.empty:
+            df_details = df_details.sort_values(by=['owner', 'week']).reset_index(drop=True)
+
+        logger.info(f"Extracted {len(df_details)} opportunity detail rows for last 5 weeks")
+        return df_details
+
+    except Exception as e:
+        logger.error(f"Error extracting owner opportunity details: {str(e)}")
+        return pd.DataFrame(columns=['owner', 'week', 'details'])
+
 def UpdateOwnerOpptyTracking(df_otrack: pd.DataFrame, owner_week_counts: Dict[str, Dict[str, int]]) -> pd.DataFrame:
     """Update Owner Opportunity Tracking DataFrame with new counts, keeping maximum values
 
@@ -1147,12 +1275,13 @@ def UpdateOwnerOpptyTracking(df_otrack: pd.DataFrame, owner_week_counts: Dict[st
         logger.error(f"Error updating Owner Opty Tracking: {str(e)}")
         return df_otrack
 
-def WriteOwnerOpptyTrackingToExcel(workbook: openpyxl.Workbook, df_otrack: pd.DataFrame) -> None:
-    """Write Owner Opportunity Tracking DataFrame to Excel, replacing existing tab
+def WriteOwnerOpptyTrackingToExcel(workbook: openpyxl.Workbook, df_otrack: pd.DataFrame, df_details: pd.DataFrame) -> None:
+    """Write Owner Opportunity Tracking DataFrame to Excel, with detail table below
 
     Args:
         workbook: Excel workbook to write to
-        df_otrack: Owner Opportunity Tracking DataFrame to write
+        df_otrack: Owner Opportunity Tracking DataFrame (Table 1) to write
+        df_details: Owner Opportunity Details DataFrame (Table 2) to write
     """
     try:
         # Remove existing Owner Opty Tracking tab if it exists
@@ -1163,11 +1292,25 @@ def WriteOwnerOpptyTrackingToExcel(workbook: openpyxl.Workbook, df_otrack: pd.Da
         # Create new Owner Opty Tracking tab
         ws_otrack = workbook.create_sheet("Owner Opty Tracking")
 
-        # Write data to the sheet
+        # Write Table 1 (summary counts) to the sheet
         for r in dataframe_to_rows(df_otrack, index=False, header=True):
             ws_otrack.append(r)
 
-        logger.info(f"Written Owner Opty Tracking with {len(df_otrack)} rows to Excel")
+        table1_rows = len(df_otrack) + 1  # +1 for header
+        logger.info(f"Written Owner Opty Tracking Table 1 with {len(df_otrack)} rows to Excel")
+
+        # Add 5 empty rows as separator
+        for _ in range(5):
+            ws_otrack.append([])
+
+        # Write Table 2 (detail rows) below
+        # Starting row for Table 2
+        table2_start_row = table1_rows + 6  # Table 1 + 5 empty rows + 1
+
+        for r in dataframe_to_rows(df_details, index=False, header=True):
+            ws_otrack.append(r)
+
+        logger.info(f"Written Owner Opty Tracking Table 2 with {len(df_details)} detail rows starting at row {table2_start_row}")
 
     except Exception as e:
         logger.error(f"Error writing Owner Opty Tracking to Excel: {str(e)}")
@@ -1736,6 +1879,9 @@ def UpdatePipe(LatestPipe: str) -> None:
         owner_week_counts = ExtractOwnerOpptyByWeek(df_pipe)
         df_otrack = UpdateOwnerOpptyTracking(df_otrack, owner_week_counts)
 
+        # Extract opportunity details for last 5 weeks
+        df_opty_details = ExtractOwnerOpptyDetails(df_pipe)
+
         # No need of the Key Column anymore
         df_pipe.drop(['Key'], axis=1, inplace=True)
         df_master.drop(['Key'], axis=1, inplace=True)
@@ -1806,7 +1952,7 @@ def UpdatePipe(LatestPipe: str) -> None:
         # Write Owner Opportunity Tracking back to Excel
         ####################################
 
-        WriteOwnerOpptyTrackingToExcel(myworkbook, df_otrack)
+        WriteOwnerOpptyTrackingToExcel(myworkbook, df_otrack, df_opty_details)
 
         myworkbook.save(OUTPUT_SUIVI_RAW)
         # Create colored log message for saving file
