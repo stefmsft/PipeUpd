@@ -7,6 +7,29 @@ A Python tool for integrating Salesforce pipeline exports into Excel tracking fi
 - Windows PowerShell (for setup scripts)
 - Internet connection (for dependency installation)
 
+## Important: Git Clone Setup
+
+**If you clone this repository on a new device**, you MUST run these commands to ensure proper file encoding:
+
+```powershell
+# 1. Navigate to the project directory
+cd C:\Projects\PipeUpd
+
+# 2. Reset git attributes to fix encoding
+git rm --cached -r .
+git reset --hard HEAD
+
+# 3. Verify PowerShell script encoding (should show UTF-8 with BOM)
+Get-Content ProjectSetup.ps1 -Encoding UTF8 | Select-Object -First 1
+```
+
+**Why?** The PowerShell scripts contain Unicode emoji characters (🚀, ✅, etc.) that require UTF-8 encoding with BOM. The `.gitattributes` file ensures correct encoding, but git needs to re-apply it after cloning.
+
+**Symptoms of encoding issues:**
+- Parse errors mentioning "Jeton inattendu" or "unexpected token"
+- Garbled characters like "âœ…" in error messages
+- Scripts fail immediately when run
+
 ## Quick Start
 
 ### 1. Initial Setup
