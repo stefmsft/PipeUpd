@@ -1,0 +1,11 @@
+# PowerShell scripts must be UTF-8 with BOM to support Unicode characters
+*.ps1 text eol=crlf working-tree-encoding=UTF-8
+
+# Python files should be UTF-8 (without BOM)
+*.py text eol=lf
+
+# Shell scripts should be UTF-8 with LF
+*.sh text eol=lf
+
+# Ensure line ending consistency
+* text=auto
