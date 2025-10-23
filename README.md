@@ -7,9 +7,44 @@ A Python tool for integrating Salesforce pipeline exports into Excel tracking fi
 - Windows PowerShell (for setup scripts)
 - Internet connection (for dependency installation)
 
-## Important: Git Clone Setup
+### PowerShell Version Recommendation
 
-**If you clone this repository on a new device**, you MUST run these commands to ensure proper file encoding:
+**For best Unicode support and modern features**, we recommend upgrading to PowerShell 7.5+:
+
+**Easiest Installation Method (via Winget):**
+```powershell
+# Open PowerShell as Administrator and run:
+winget install --id Microsoft.PowerShell --source winget
+```
+
+**Alternative Installation Methods:**
+
+1. **Microsoft Store** (Simplest for Windows 10/11):
+   - Open Microsoft Store
+   - Search for "PowerShell"
+   - Click "Install"
+
+2. **Manual Installer**:
+   - Download from: https://github.com/PowerShell/PowerShell/releases/latest
+   - Choose the `.msi` installer for your system (x64 or ARM64)
+   - Run the installer with default settings
+
+**After Installation:**
+- PowerShell 7.5+ installs alongside Windows PowerShell (doesn't replace it)
+- Launch via Start Menu → "PowerShell 7" or run `pwsh` command
+- Enable Unicode icons by adding `ENABLE_UNICODE=true` to your `.env` file
+
+**Why Upgrade?**
+- ✅ Full Unicode support (emojis display correctly)
+- ✅ Better performance and modern features
+- ✅ Cross-platform compatibility
+- ✅ Long-term support and updates
+
+**Note:** If you prefer to stay on Windows PowerShell 5.x, the scripts will work fine with ASCII fallback icons (`[!]` instead of `⚠️`).
+
+## Important: Git Clone Setup if not running Powershell 7.5+
+
+**If you clone this repository on a new device** and you are not using Powershell 7.5+, you MUST run these commands to ensure proper file encoding:
 
 ```powershell
 # 1. Navigate to the project directory
@@ -35,7 +70,7 @@ Get-Content ProjectSetup.ps1 -Encoding UTF8 | Select-Object -First 1
 ### 1. Initial Setup
 
 ```powershell
-.\Setup.ps1
+.\ProjectSetup.ps1
 ```
 
 This will:
@@ -55,11 +90,6 @@ OUTPUT_SUIVI_RAW=C:\path\to\output\tracking.xlsm
 ```
 
 ### 3. Usage
-
-**Interactive Mode:**
-```powershell
-.\Run.ps1
-```
 
 **Direct Execution:**
 ```bash
@@ -259,7 +289,7 @@ The `debug_owner_week.py` script helps investigate opportunity counts for specif
 python debug_owner_week.py "Owner Name" 43
 
 # Using uv
-uv run python debug_owner_week.py "Aya Bedida" 41
+uv run python debug_owner_week.py "John DOE" 41
 ```
 
 **What it shows:**
@@ -276,7 +306,7 @@ uv run python debug_owner_week.py "Aya Bedida" 41
 **Example output:**
 ```
 ================================================================================
-Searching for opportunities: Owner='Aya Bedida', Week=41
+Searching for opportunities: Owner='John DOE', Week=41
 ================================================================================
 
 Loading pipe file: ASUS BTB PIPELINE - Stef-2025-10-10-06-00-11.xlsx
@@ -287,8 +317,8 @@ Unique opportunities: 6
 
 Owner                     Opty Number     Customer                       Qty        Total Price     Created Date
 --------------------------------------------------------------------------------------------------------------
-user                OP0000271712    Mairie de Fort de France       1          €1,719          2025-10-06
-user                OP0000271714    Mairie de Fort de France       1          €1,719          2025-10-06
+John DOE                OP0000271712    Mairie de Fort de France       1          €1,719          2025-10-06
+John DOE                OP0000271714    Mairie de Fort de France       1          €1,719          2025-10-06
 ...
 
 Total unique opportunities: 6
