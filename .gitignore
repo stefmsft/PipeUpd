@@ -176,6 +176,7 @@ HOW2USEIT.md
 uv.lock
 
 # Claude Code documentation
+.claude
 CLAUDE.md
 
 # Project setup files (added by ProjectSetup scripts)

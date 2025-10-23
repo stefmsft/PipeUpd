@@ -12,9 +12,38 @@ import pandas as pd
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+import platform
 
 # Load environment variables
 load_dotenv()
+
+# Detect if we can use Unicode icons safely
+# On Windows, check PowerShell version. Use plain text for older versions.
+def can_use_unicode():
+    """
+    Check if Unicode icons can be displayed safely.
+
+    Returns True if:
+    - Not on Windows (Linux/Mac handle Unicode well)
+    - ENABLE_UNICODE environment variable is set to 'true' or '1'
+
+    Otherwise returns False on Windows (safe default for old PowerShell)
+    """
+    # Allow explicit override via environment variable
+    enable_unicode = os.getenv('ENABLE_UNICODE', '').lower()
+    if enable_unicode in ('true', '1', 'yes'):
+        return True
+
+    # Non-Windows systems typically handle Unicode well
+    if platform.system() != 'Windows':
+        return True
+
+    # On Windows, default to False (safe for PowerShell 5.x)
+    # Users with PowerShell 7.5+ can set ENABLE_UNICODE=true in .env
+    return False
+
+USE_UNICODE = can_use_unicode()
+WARNING_ICON = "⚠️" if USE_UNICODE else "[!]"
 
 DIRECTORY_PIPE_RAW = os.getenv("DIRECTORY_PIPE_RAW")
 SKIP_ROW = int(os.getenv("SKIP_ROW", 12))
@@ -163,7 +192,7 @@ def main():
         # Check if future date
         is_future = ""
         if pd.notna(row[created_col]) and row[created_col] > today:
-            is_future = " ⚠️ FUTURE"
+            is_future = f" {WARNING_ICON} FUTURE"
             future_count += 1
 
         print(f"{owner:<25} {opty:<15} {customer:<30} {qty:<10} {price:<15} {created:<12}{is_future}")
@@ -171,7 +200,7 @@ def main():
     print("-" * 110)
     print(f"\nTotal unique opportunities: {unique_count}")
     if future_count > 0:
-        print(f"⚠️  WARNING: {future_count} opportunities have FUTURE creation dates!")
+        print(f"{WARNING_ICON} WARNING: {future_count} opportunities have FUTURE creation dates!")
 
     print(f"\n{'='*80}\n")
 
