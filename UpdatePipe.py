@@ -767,13 +767,17 @@ def CreateWeekHistoryDataFrame() -> pd.DataFrame:
     """Create a new Week History DataFrame with proper column structure
 
     Returns:
-        DataFrame with 'key' column and W01-W53 columns
+        DataFrame with 'key' (for internal processing), 'Opportunity Number',
+        'Model Name', and W01-W53 columns
     """
-    columns = ['key'] + [f'W{i:02d}' for i in range(1, 54)]  # W01 to W53
+    columns = ['key', 'Opportunity Number', 'Model Name'] + [f'W{i:02d}' for i in range(1, 54)]  # W01 to W53
     return pd.DataFrame(columns=columns)
 
 def LoadWeekHistoryFromExcel(workbook: openpyxl.Workbook) -> pd.DataFrame:
     """Load Week History data from Excel tab if it exists
+
+    Supports both old format (with 'key' column) and new format
+    (with 'Opportunity Number' and 'Model Name' columns).
 
     Args:
         workbook: Excel workbook to read from
@@ -790,11 +794,36 @@ def LoadWeekHistoryFromExcel(workbook: openpyxl.Workbook) -> pd.DataFrame:
                 # Set column names from first row
                 df_whisto.columns = df_whisto.iloc[0]
                 df_whisto = df_whisto.drop(df_whisto.index[0]).reset_index(drop=True)
+
+                # Check if this is old format (key only) or new format (Opportunity Number + Model Name)
+                has_opty_model = 'Opportunity Number' in df_whisto.columns and 'Model Name' in df_whisto.columns
+                has_key = 'key' in df_whisto.columns
+
+                if has_opty_model:
+                    # New format - ensure all columns exist
+                    expected_columns = ['Opportunity Number', 'Model Name'] + [f'W{i:02d}' for i in range(1, 54)]
+                    # Create 'key' column for internal processing (Opty Number + Model Name)
+                    df_whisto['key'] = df_whisto['Opportunity Number'].astype(str) + df_whisto['Model Name'].astype(str)
+                    # Add 'key' at the beginning for internal processing
+                    expected_columns = ['key'] + expected_columns
+                elif has_key:
+                    # Old format - migrate to new format
+                    logger.info("Migrating old Week History format (key) to new format (Opportunity Number + Model Name)")
+                    # For old format, we can't split the key reliably, so create empty columns
+                    # They will be populated on next update
+                    df_whisto['Opportunity Number'] = ''
+                    df_whisto['Model Name'] = ''
+                    expected_columns = ['key', 'Opportunity Number', 'Model Name'] + [f'W{i:02d}' for i in range(1, 54)]
+                else:
+                    # Neither format - create new structure
+                    logger.warning("Week History has unexpected format, creating new DataFrame")
+                    return CreateWeekHistoryDataFrame()
+
                 # Ensure we have all required columns
-                expected_columns = ['key'] + [f'W{i:02d}' for i in range(1, 54)]
                 for col in expected_columns:
                     if col not in df_whisto.columns:
                         df_whisto[col] = ''
+
                 # Reorder columns to match expected structure
                 df_whisto = df_whisto.reindex(columns=expected_columns, fill_value='')
                 logger.info(f"Loaded Week History with {len(df_whisto)} rows")
@@ -808,13 +837,16 @@ def LoadWeekHistoryFromExcel(workbook: openpyxl.Workbook) -> pd.DataFrame:
         logger.warning(f"Error loading Week History: {str(e)}, creating new DataFrame")
         return CreateWeekHistoryDataFrame()
 
-def UpdateWeekHistoryRow(df_whisto: pd.DataFrame, key: str, week_data: Dict[str, str]) -> pd.DataFrame:
+def UpdateWeekHistoryRow(df_whisto: pd.DataFrame, key: str, week_data: Dict[str, str],
+                         opty_number: str = '', model_name: str = '') -> pd.DataFrame:
     """Update or create a row in the Week History DataFrame
 
     Args:
         df_whisto: Week History DataFrame
-        key: Unique key for the opportunity
+        key: Unique key for the opportunity (Opty Number + Model Name)
         week_data: Dictionary mapping week column names to values
+        opty_number: Opportunity Number (optional, for new rows)
+        model_name: Model Name (optional, for new rows)
 
     Returns:
         Updated Week History DataFrame
@@ -827,6 +859,14 @@ def UpdateWeekHistoryRow(df_whisto: pd.DataFrame, key: str, week_data: Dict[str,
         if len(existing_rows) > 0:
             # Update existing row
             row_idx = existing_rows.index[0]
+            # Update Opportunity Number and Model Name if provided and currently empty
+            if opty_number and (pd.isna(df_whisto.at[row_idx, 'Opportunity Number']) or
+                               str(df_whisto.at[row_idx, 'Opportunity Number']).strip() == ''):
+                df_whisto.at[row_idx, 'Opportunity Number'] = opty_number
+            if model_name and (pd.isna(df_whisto.at[row_idx, 'Model Name']) or
+                              str(df_whisto.at[row_idx, 'Model Name']).strip() == ''):
+                df_whisto.at[row_idx, 'Model Name'] = model_name
+            # Update week data
             for week_col, value in week_data.items():
                 # Convert week column name (e.g., "Week 25") to Week History format (e.g., "W25")
                 if week_col.startswith('Week '):
@@ -836,7 +876,11 @@ def UpdateWeekHistoryRow(df_whisto: pd.DataFrame, key: str, week_data: Dict[str,
                         df_whisto.at[row_idx, whisto_col] = value
         else:
             # Create new row
-            new_row = {'key': key}
+            new_row = {
+                'key': key,
+                'Opportunity Number': opty_number,
+                'Model Name': model_name
+            }
             # Initialize all week columns to empty
             for i in range(1, 54):
                 new_row[f'W{i:02d}'] = ''
@@ -926,6 +970,9 @@ def UpgradeFormatV1toV2(worksheet: openpyxl.worksheet.worksheet.Worksheet) -> No
 def WriteWeekHistoryToExcel(workbook: openpyxl.Workbook, df_whisto: pd.DataFrame) -> None:
     """Write Week History DataFrame to Excel, replacing existing tab
 
+    Writes Opportunity Number, Model Name, and week columns (W01-W53).
+    The internal 'key' column is excluded from Excel output.
+
     Args:
         workbook: Excel workbook to write to
         df_whisto: Week History DataFrame to write
@@ -939,11 +986,16 @@ def WriteWeekHistoryToExcel(workbook: openpyxl.Workbook, df_whisto: pd.DataFrame
         # Create new Week History tab
         ws_whisto = workbook.create_sheet("Week History")
 
+        # Create a copy of the DataFrame excluding the 'key' column for Excel output
+        # Keep only: Opportunity Number, Model Name, and W01-W53 columns
+        output_columns = ['Opportunity Number', 'Model Name'] + [f'W{i:02d}' for i in range(1, 54)]
+        df_output = df_whisto[output_columns].copy()
+
         # Write data to the sheet
-        for r in dataframe_to_rows(df_whisto, index=False, header=True):
+        for r in dataframe_to_rows(df_output, index=False, header=True):
             ws_whisto.append(r)
 
-        logger.info(f"Written Week History with {len(df_whisto)} rows to Excel")
+        logger.info(f"Written Week History with {len(df_output)} rows to Excel")
 
     except Exception as e:
         logger.error(f"Error writing Week History to Excel: {str(e)}")
@@ -964,6 +1016,9 @@ def CreateOwnerOpptyTrackingDataFrame() -> pd.DataFrame:
 def LoadOwnerOpptyTrackingFromExcel(workbook: openpyxl.Workbook) -> pd.DataFrame:
     """Load Owner Opportunity Tracking data from Excel tab if it exists
 
+    IMPORTANT: This function only reads Table 1 (summary counts), not Table 2 (details).
+    The two tables are separated by empty rows in the Excel sheet.
+
     Args:
         workbook: Excel workbook to read from
 
@@ -973,24 +1028,45 @@ def LoadOwnerOpptyTrackingFromExcel(workbook: openpyxl.Workbook) -> pd.DataFrame
     try:
         if "Owner Opty Tracking" in workbook.sheetnames:
             ws_otrack = workbook['Owner Opty Tracking']
-            # Convert to DataFrame
-            df_otrack = pd.DataFrame(ws_otrack.values)
-            if not df_otrack.empty:
-                # Set column names from first row
-                df_otrack.columns = df_otrack.iloc[0]
-                df_otrack = df_otrack.drop(df_otrack.index[0]).reset_index(drop=True)
-                # Ensure we have all required columns
-                expected_columns = ['owner'] + [f'W{i:02d}' for i in range(1, 54)]
-                for col in expected_columns:
-                    if col not in df_otrack.columns:
-                        df_otrack[col] = 0
-                # Reorder columns to match expected structure
-                df_otrack = df_otrack.reindex(columns=expected_columns, fill_value=0)
-                # Convert week columns to numeric
-                for col in [f'W{i:02d}' for i in range(1, 54)]:
-                    df_otrack[col] = pd.to_numeric(df_otrack[col], errors='coerce').fillna(0).astype(int)
-                logger.info(f"Loaded Owner Opty Tracking with {len(df_otrack)} rows")
-                return df_otrack
+
+            # Read only until we hit an empty row (separator between Table 1 and Table 2)
+            # First row should be headers
+            data_rows = []
+            for row_idx, row in enumerate(ws_otrack.iter_rows(values_only=True)):
+                # Skip if first cell (owner column) is None or empty
+                # This stops at the separator rows between Table 1 and Table 2
+                if row_idx == 0:
+                    # First row is header
+                    header_row = row
+                    continue
+                if row[0] is None or str(row[0]).strip() == '':
+                    # Empty row found - this is the separator, stop reading Table 1
+                    logger.debug(f"Stopped reading Owner Opty Tracking at row {row_idx + 1} (empty separator)")
+                    break
+                data_rows.append(row)
+
+            if not data_rows:
+                logger.info("Owner Opty Tracking tab exists but Table 1 is empty, creating new DataFrame")
+                return CreateOwnerOpptyTrackingDataFrame()
+
+            # Create DataFrame from only Table 1 data
+            df_otrack = pd.DataFrame(data_rows, columns=header_row)
+
+            # Ensure we have all required columns
+            expected_columns = ['owner'] + [f'W{i:02d}' for i in range(1, 54)]
+            for col in expected_columns:
+                if col not in df_otrack.columns:
+                    df_otrack[col] = 0
+
+            # Reorder columns to match expected structure
+            df_otrack = df_otrack.reindex(columns=expected_columns, fill_value=0)
+
+            # Convert week columns to numeric
+            for col in [f'W{i:02d}' for i in range(1, 54)]:
+                df_otrack[col] = pd.to_numeric(df_otrack[col], errors='coerce').fillna(0).astype(int)
+
+            logger.info(f"Loaded Owner Opty Tracking Table 1 with {len(df_otrack)} rows")
+            return df_otrack
 
         # If tab doesn't exist or is empty, create new DataFrame
         logger.info("Owner Opty Tracking tab not found or empty, creating new DataFrame")
@@ -1820,6 +1896,9 @@ def UpdatePipe(LatestPipe: str) -> None:
         for _, row in df_master.iterrows():
             if 'Key' in row and pd.notna(row['Key']) and str(row['Key']).strip() != '':
                 key = str(row['Key'])
+                # Extract Opportunity Number and Model Name
+                opty_number = str(row.get('Opportunity Number', '')) if pd.notna(row.get('Opportunity Number')) else ''
+                model_name = str(row.get('Nom du produit', '')) if pd.notna(row.get('Nom du produit')) else ''
                 # Collect the existing week column values
                 week_data = {}
                 for week_col in existing_week_columns:
@@ -1828,7 +1907,7 @@ def UpdatePipe(LatestPipe: str) -> None:
 
                 # Update Week History if we have any week data
                 if week_data:
-                    df_whisto = UpdateWeekHistoryRow(df_whisto, key, week_data)
+                    df_whisto = UpdateWeekHistoryRow(df_whisto, key, week_data, opty_number, model_name)
 
         ####################################
         # Apply week shift to master data if needed using history data
