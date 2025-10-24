@@ -310,15 +310,15 @@ Searching for opportunities: Owner='John DOE', Week=41
 ================================================================================
 
 Loading pipe file: ASUS BTB PIPELINE - Stef-2025-10-10-06-00-11.xlsx
-Found 981 total opportunities for 'user'
+Found 981 total opportunities for 'John DOE'
 Found 8 total rows in Week 41 of 2025
 Found 2 duplicate opportunity numbers (keeping max values)
 Unique opportunities: 6
 
 Owner                     Opty Number     Customer                       Qty        Total Price     Created Date
 --------------------------------------------------------------------------------------------------------------
-John DOE                OP0000271712    Mairie de Fort de France       1          €1,719          2025-10-06
-John DOE                OP0000271714    Mairie de Fort de France       1          €1,719          2025-10-06
+John DOE                OP0000271712    Mairie de Fort de x            1          €1,719          2025-10-06
+John DOE                OP0000271714    Mairie de Fort de x            1          €1,719          2025-10-06
 ...
 
 Total unique opportunities: 6

@@ -1784,11 +1784,15 @@ def UpdatePipe(LatestPipe: str) -> None:
         shl = myworkbook.sheetnames
         if "Pipeline Run Rate" in shl:
             worksheet_RR= myworkbook['Pipeline Run Rate']
+            # Delete all rows including header to rewrite everything
+            worksheet_RR.delete_rows(1, amount=worksheet_RR.max_row)
+        else:
+            # Create new sheet if it doesn't exist
+            worksheet_RR = myworkbook.create_sheet("Pipeline Run Rate")
 
-            worksheet_RR.delete_rows(2, amount=(worksheet_RR.max_row+1))
-
-            for r in dataframe_to_rows(df_pipe_RR, index=False, header=False):
-                worksheet_RR.append(r)
+        # Write DataFrame with headers
+        for r in dataframe_to_rows(df_pipe_RR, index=False, header=True):
+            worksheet_RR.append(r)
 
         ####################################
         # Creation/Update onglet Closed Lost Pipe
@@ -1796,15 +1800,14 @@ def UpdatePipe(LatestPipe: str) -> None:
 
         if "Pipeline Close Lost" in shl:
             worksheet_CL= myworkbook['Pipeline Close Lost']
-            worksheet_CL.delete_rows(2, amount=(worksheet_CL.max_row+1))
+            # Delete all rows including header to rewrite everything
+            worksheet_CL.delete_rows(1, amount=worksheet_CL.max_row)
         else:
             # Create new sheet if it doesn't exist
             worksheet_CL = myworkbook.create_sheet("Pipeline Close Lost")
-            # Copy header from main sheet
-            for col_num, cell in enumerate(myworkbook['Pipeline Sell Out'][1], 1):
-                worksheet_CL.cell(row=1, column=col_num, value=cell.value)
 
-        for r in dataframe_to_rows(df_pipe_CL, index=False, header=False):
+        # Write DataFrame with headers
+        for r in dataframe_to_rows(df_pipe_CL, index=False, header=True):
             worksheet_CL.append(r)
 
         ####################################
