@@ -105,10 +105,11 @@ python UpdatePipe.py all
 
 ## What It Does
 
+- **Automatic Header Detection**: Intelligently detects Salesforce export header rows (no manual configuration needed!)
 - Merges Salesforce opportunity data into Excel tracking spreadsheet
 - Preserves existing manual data in key columns:
   - Estimated quantities
-  - Revenue projections  
+  - Revenue projections
   - Invoice quarters
   - Forecast confidence levels
   - Support comments
@@ -118,11 +119,66 @@ python UpdatePipe.py all
 
 ## Features
 
+- **Automatic Header Detection**: 🆕 Intelligently scans Salesforce exports to find header rows
 - **Data Preservation**: Manual entries are never overwritten
 - **Smart Filtering**: Removes test data, invalid entries, and excluded owners
 - **Automated Analysis**: Rolling window analysis with configurable timeframes
 - **Backup Support**: Optional file backup before processing
 - **Error Handling**: Comprehensive logging and error reporting
+
+### Automatic Header Detection 🆕
+
+The system now automatically detects where the actual data headers start in Salesforce export files, eliminating the need for manual `SKIP_ROW` configuration.
+
+**How it works:**
+- Scans the first 30 rows of the Excel file
+- Looks for key header columns: "Opportunity Owner", "Created Date", "Close Date"
+- Automatically determines how many rows to skip
+- Adapts to Salesforce export format changes (warning lines, etc.)
+
+**Benefits:**
+- ✅ No manual configuration needed
+- ✅ Works with varying Salesforce export formats
+- ✅ Handles warning lines automatically (e.g., "Exported first 15,000 rows...")
+- ✅ Backward compatible with existing SKIP_ROW setting
+
+**Testing:**
+```bash
+# Run header detection tests
+uv run python tests/test_header_detection.py
+```
+
+The test validates detection with both standard exports (12 header rows) and exports with warning lines (15+ header rows).
+
+### Colored Logging 🎨
+
+The application uses color-coded logging for better visibility and quick issue identification:
+
+**Log Level Colors:**
+- **INFO**: Default text (white) - Normal operation messages
+- **DEBUG**: Yellow 🟡 - Detailed debugging information
+- **WARNING**: Cyan 🔵 - Important notices and deprecation warnings
+- **ERROR**: Red 🔴 - Error conditions requiring attention
+
+**Key Log Messages:**
+- Source directory path (cyan)
+- Pipe file name (green)
+- Auto-detected header row (info)
+- SKIP_ROW deprecation notices (cyan warning)
+
+**Example Output:**
+```
+INFO - Source directory: C:\Projects\PipeUpdUV\tests
+INFO - Using pipe file: ASUS BTB PIPELINE - Stef-2025-10-27.xlsx
+INFO - Auto-detected header row at line 16 (will skip 15 rows)
+WARNING - SKIP_ROW is deprecated. Auto-detection is now used by default.
+```
+
+**Enable Debug Logging:**
+Add to your `.env` file:
+```env
+LOG_LEVEL=DEBUG
+```
 
 ## Configuration Options
 
@@ -130,9 +186,11 @@ Key `.env` settings:
 
 | Setting | Purpose | Default |
 |---------|---------|---------|
-| `SKIP_ROW` | Header rows to skip in Salesforce exports | 12 |
+| ~~`SKIP_ROW`~~ | **[DEPRECATED]** Header rows to skip (now auto-detected) | Auto |
 | `ROLLINGWINDOWS` | Analysis window size | 31 |
 | `BCKUP_PIPE_FILE` | Enable backup before processing | False |
+
+**Note:** `SKIP_ROW` is deprecated as of V2.0. The system now uses automatic header detection. If specified, it will be used as a fallback if auto-detection fails.
 
 ## Output
 

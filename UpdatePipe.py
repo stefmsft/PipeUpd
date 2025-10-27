@@ -85,6 +85,14 @@ class ColoredFormatter(logging.Formatter):
                 level = parts[1]
                 message = parts[2]
                 return f"{timestamp} - {Fore.YELLOW}{level} - {message}{Style.RESET_ALL}"
+        elif record.levelname == 'WARNING':
+            # Apply cyan color to WARNING messages (more visible on black backgrounds)
+            parts = formatted.split(' - ', 2)
+            if len(parts) >= 3:
+                timestamp = parts[0]
+                level = parts[1]
+                message = parts[2]
+                return f"{timestamp} - {Fore.CYAN}{level} - {message}{Style.RESET_ALL}"
         elif record.levelname == 'ERROR':
             # Apply red color to ERROR messages
             parts = formatted.split(' - ', 2)
@@ -357,7 +365,60 @@ def GetAllPipe(idir: str) -> List[str]:
     except Exception as e:
         logger.error(f"Error getting all pipe files: {str(e)}")
         raise PipeProcessingError(f"Failed to get pipe files: {str(e)}")
+def DetectHeaderRow(pfile: str, max_rows: int = 30) -> int:
+    """Automatically detect the header row in Salesforce extract files
 
+    Salesforce extracts may have varying numbers of header/warning lines.
+    This function scans the first rows to find the actual column headers.
+
+    Args:
+        pfile: Path to the Excel file
+        max_rows: Maximum number of rows to scan (default 30)
+
+    Returns:
+        Row number where headers are found (0-based index for skiprows parameter)
+        Returns 0 if headers are found immediately or if detection fails
+
+    Raises:
+        PipeProcessingError: If header row cannot be found
+    """
+    try:
+        # Read first N rows without headers
+        df = pd.read_excel(pfile, nrows=max_rows, header=None)
+
+        # Known header columns that should always be present in Salesforce extracts
+        expected_headers = ['Opportunity Owner', 'Created Date', 'Close Date']
+
+        # Scan each row looking for these headers
+        for row_idx in range(len(df)):
+            row = df.iloc[row_idx]
+            # Convert row values to strings and check for expected headers
+            row_str = row.astype(str).str.strip()
+
+            # Count how many expected headers are found in this row
+            matches = sum(1 for header in expected_headers if header in row_str.values)
+
+            # If we find at least 2 of the 3 expected headers, this is our header row
+            if matches >= 2:
+                logger.info(f"Auto-detected header row at line {row_idx + 1} (will skip {row_idx} rows)")
+                logger.debug(f"Found {matches} matching headers: {[h for h in expected_headers if h in row_str.values]}")
+                return row_idx
+
+        # If no header found in first max_rows, log warning and use SKIP_ROW or default
+        if SKIP_ROW > 0:
+            logger.warning(f"Could not auto-detect header row in first {max_rows} rows, using SKIP_ROW={SKIP_ROW}")
+            return SKIP_ROW
+        else:
+            logger.warning(f"Could not auto-detect header row in first {max_rows} rows, defaulting to row 12")
+            return 12
+
+    except Exception as e:
+        error_msg = f"Error during header detection: {str(e)}"
+        logger.error(error_msg)
+        if SKIP_ROW > 0:
+            logger.warning(f"Falling back to SKIP_ROW={SKIP_ROW}")
+            return SKIP_ROW
+        raise PipeProcessingError(error_msg)
 
 def CheckPipeFile(pfile: str) -> bool:
     """Check if pipe file is valid Excel file"""
@@ -1645,14 +1706,29 @@ def UpdatePipe(LatestPipe: str) -> None:
         # Load Latest Pipe File
         ####################################
 
+        # Log the source directory
+        source_dir_message = f'Source directory: {Fore.CYAN}{DIRECTORY_PIPE_RAW}{Style.RESET_ALL}'
+        logger.info(source_dir_message)
+
         # Create colored log message for pipe file
         filename = os.path.basename(LatestPipe)
         colored_message = f'Using pipe file: {Fore.GREEN}{filename}{Style.RESET_ALL}'
         logger.info(colored_message)
-        # Skip SKIP_ROW if extract made with header details. Depending on the header lines this value can be updated from .env file
+
+        # Automatically detect header row (replaces manual SKIP_ROW configuration)
         try:
-            df_pipe = pd.read_excel(LatestPipe, skiprows=SKIP_ROW)
-            logger.info(f"Successfully loaded pipe file with {len(df_pipe)} initial rows")
+            skip_rows = DetectHeaderRow(LatestPipe)
+            if SKIP_ROW > 0 and SKIP_ROW != skip_rows:
+                logger.warning(f"SKIP_ROW={SKIP_ROW} in .env differs from auto-detected {skip_rows}. Using auto-detected value.")
+                logger.warning("Note: SKIP_ROW is deprecated. Auto-detection is now used by default.")
+        except Exception as e:
+            logger.warning(f"Header auto-detection failed: {str(e)}. Using SKIP_ROW={SKIP_ROW}")
+            skip_rows = SKIP_ROW
+
+        # Load pipe file with auto-detected skip rows
+        try:
+            df_pipe = pd.read_excel(LatestPipe, skiprows=skip_rows)
+            logger.info(f"Successfully loaded pipe file with {len(df_pipe)} initial rows (skipped {skip_rows} header rows)")
         except Exception as e:
             raise PipeProcessingError(f"Failed to read Excel file {LatestPipe}: {str(e)}")
 
