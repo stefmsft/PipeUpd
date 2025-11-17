@@ -210,6 +210,11 @@ COL_CUSTOMER=6
 COL_TOTPRICE=9
 COL_SALESMODELNAME=10
 
+# Global variable to store actual column names (language-specific)
+# This is set during dataframe processing after column reorganization
+# Allows language-independent access via cols[COL_*] pattern
+cols = None
+
 ################################################################
 # Exception Classes
 ################################################################
@@ -370,6 +375,7 @@ def DetectHeaderRow(pfile: str, max_rows: int = 30) -> int:
 
     Salesforce extracts may have varying numbers of header/warning lines.
     This function scans the first rows to find the actual column headers.
+    Supports multiple languages (English, French, etc.)
 
     Args:
         pfile: Path to the Excel file
@@ -387,7 +393,14 @@ def DetectHeaderRow(pfile: str, max_rows: int = 30) -> int:
         df = pd.read_excel(pfile, nrows=max_rows, header=None)
 
         # Known header columns that should always be present in Salesforce extracts
-        expected_headers = ['Opportunity Owner', 'Created Date', 'Close Date']
+        # Multiple language variants: each inner list is a language set
+        # We need at least 2 matches from ANY language set
+        expected_headers_multilang = [
+            # English
+            ['Opportunity Owner', 'Created Date', 'Close Date', 'Stage'],
+            # French
+            ['Propriétaire de l\'opportunité', 'Date de création', 'Date de clôture', 'Étape'],
+        ]
 
         # Scan each row looking for these headers
         for row_idx in range(len(df)):
@@ -395,14 +408,17 @@ def DetectHeaderRow(pfile: str, max_rows: int = 30) -> int:
             # Convert row values to strings and check for expected headers
             row_str = row.astype(str).str.strip()
 
-            # Count how many expected headers are found in this row
-            matches = sum(1 for header in expected_headers if header in row_str.values)
+            # Check each language set
+            for lang_idx, expected_headers in enumerate(expected_headers_multilang):
+                # Count how many expected headers are found in this row
+                matches = sum(1 for header in expected_headers if header in row_str.values)
 
-            # If we find at least 2 of the 3 expected headers, this is our header row
-            if matches >= 2:
-                logger.info(f"Auto-detected header row at line {row_idx + 1} (will skip {row_idx} rows)")
-                logger.debug(f"Found {matches} matching headers: {[h for h in expected_headers if h in row_str.values]}")
-                return row_idx
+                # If we find at least 2 of the expected headers, this is our header row
+                if matches >= 2:
+                    lang_name = ['English', 'French'][lang_idx] if lang_idx < 2 else f'Language {lang_idx}'
+                    logger.info(f"Auto-detected header row at line {row_idx + 1} (will skip {row_idx} rows) - {lang_name} format")
+                    logger.debug(f"Found {matches} matching headers: {[h for h in expected_headers if h in row_str.values]}")
+                    return row_idx
 
         # If no header found in first max_rows, log warning and use SKIP_ROW or default
         if SKIP_ROW > 0:
@@ -612,6 +628,7 @@ def Mapping_FrCast(row: pd.Series) -> str:
     Returns:
         Forecast category string
     """
+    global cols
 
     Key = row['Key']
 
@@ -623,7 +640,9 @@ def Mapping_FrCast(row: pd.Series) -> str:
 # Update : Automatic fill of the column value base on Win Rate column ... If not empty
     fcast = seq
 
-    Stat = row['Stage']
+    # Use language-independent column access via cols[COL_STAGE]
+    # This works with both English "Stage" and French "Étape" columns
+    Stat = row[cols[COL_STAGE]] if cols is not None else row.get('Stage', '')
 
     if Stat.lower() == 'closed won':
         fcast = "WIN = Gagné"
@@ -1684,7 +1703,7 @@ def UpdatePipeAnalysis(wb: openpyxl.Workbook, df_log: pd.DataFrame) -> bool:
 
 def UpdatePipe(LatestPipe: str) -> None:
     """Main function to update pipe data with enhanced error handling"""
-    global df_master
+    global df_master, cols
 
     # Create colored debug message for pipe update start
     filename = os.path.basename(LatestPipe)
