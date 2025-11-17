@@ -6,7 +6,8 @@
 # Parse command line arguments
 param(
     [switch]$y,
-    [switch]$help
+    [switch]$help,
+    [switch]$SkipPwshCheck  # Internal flag to skip PowerShell version check after reinstall
 )
 
 # Set strict mode to exit on any error
@@ -15,10 +16,138 @@ $ErrorActionPreference = "Stop"
 # Show help if requested
 if ($help) {
     Write-Host "Python Boilerplate Setup Script" -ForegroundColor Green
-    Write-Host "Usage: .\setup.ps1 [-y] [-help]" -ForegroundColor White
+    Write-Host "Usage: .\ProjectSetup.ps1 [-y] [-help]" -ForegroundColor White
     Write-Host "  -y      : Non-interactive mode (use defaults)" -ForegroundColor White
     Write-Host "  -help   : Show this help message" -ForegroundColor White
     exit 0
+}
+
+# ============================================================================
+# PowerShell Version Check and Installation
+# ============================================================================
+# This project requires PowerShell 7.5 or higher for proper functionality
+# (Unicode support, better error handling, modern features)
+
+if (-not $SkipPwshCheck) {
+    $currentVersion = $PSVersionTable.PSVersion
+    $requiredMajor = 7
+    $requiredMinor = 5
+
+    Write-Host "==================================================================" -ForegroundColor Cyan
+    Write-Host "PowerShell Version Check" -ForegroundColor Cyan
+    Write-Host "==================================================================" -ForegroundColor Cyan
+    Write-Host "Current PowerShell version: $($currentVersion.Major).$($currentVersion.Minor).$($currentVersion.Patch)" -ForegroundColor White
+    Write-Host "Required version: $requiredMajor.$requiredMinor or higher" -ForegroundColor White
+    Write-Host ""
+
+    if (($currentVersion.Major -lt $requiredMajor) -or
+        (($currentVersion.Major -eq $requiredMajor) -and ($currentVersion.Minor -lt $requiredMinor))) {
+
+        Write-Host "[!] PREREQUISITE NOT MET" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "This setup script requires PowerShell 7.5 or higher for optimal functionality:" -ForegroundColor White
+        Write-Host "  - Better Unicode support (French characters, emojis)" -ForegroundColor Gray
+        Write-Host "  - Improved error handling and debugging" -ForegroundColor Gray
+        Write-Host "  - Modern PowerShell features and performance" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "Your current version: PowerShell $($currentVersion.Major).$($currentVersion.Minor)" -ForegroundColor Yellow
+        Write-Host "Required version: PowerShell 7.5 or higher" -ForegroundColor Green
+        Write-Host ""
+
+        # Ask user if they want to install PowerShell 7.5
+        if ($y) {
+            # Non-interactive mode - auto-install
+            $installChoice = "Y"
+            Write-Host "[AUTO] Non-interactive mode: Installing PowerShell 7.5 automatically..." -ForegroundColor Cyan
+        } else {
+            # Interactive mode - ask user
+            $installChoice = Read-Host "Would you like to install PowerShell 7.5 now? (Y/N)"
+        }
+
+        if ($installChoice -eq "Y" -or $installChoice -eq "y") {
+            Write-Host ""
+            Write-Host "[+] Installing PowerShell 7.5 using winget..." -ForegroundColor Green
+
+            try {
+                # Check if winget is available
+                $wingetPath = Get-Command winget -ErrorAction SilentlyContinue
+
+                if (-not $wingetPath) {
+                    Write-Host "[ERROR] winget is not available on this system." -ForegroundColor Red
+                    Write-Host "Please install PowerShell 7.5 manually from:" -ForegroundColor Yellow
+                    Write-Host "  https://github.com/PowerShell/PowerShell/releases" -ForegroundColor Cyan
+                    Write-Host ""
+                    Write-Host "Or use the Microsoft Store:" -ForegroundColor Yellow
+                    Write-Host "  ms-windows-store://pdp/?productid=9MZ1SNWT0N5D" -ForegroundColor Cyan
+                    exit 1
+                }
+
+                # Install PowerShell 7.5 using winget
+                Write-Host "[+] Running: winget install Microsoft.PowerShell --version 7.5.0 --silent" -ForegroundColor Gray
+                winget install Microsoft.PowerShell --version 7.5.0 --silent --accept-source-agreements --accept-package-agreements
+
+                if ($LASTEXITCODE -ne 0) {
+                    # Try without specific version
+                    Write-Host "[+] Trying latest PowerShell 7.x version..." -ForegroundColor Yellow
+                    winget install Microsoft.PowerShell --silent --accept-source-agreements --accept-package-agreements
+                }
+
+                Write-Host "[OK] PowerShell 7.5 installed successfully!" -ForegroundColor Green
+                Write-Host ""
+                Write-Host "[+] Launching new PowerShell 7 window and restarting setup..." -ForegroundColor Green
+                Write-Host ""
+
+                # Get the script path
+                $scriptPath = $MyInvocation.MyCommand.Path
+
+                # Build arguments to pass through
+                $args = @("-NoExit", "-File", "`"$scriptPath`"", "-SkipPwshCheck")
+                if ($y) {
+                    $args += "-y"
+                }
+
+                # Launch PowerShell 7 with the script
+                Start-Process -FilePath "pwsh" -ArgumentList $args -Wait
+
+                Write-Host "[DONE] Setup completed in new PowerShell 7 window." -ForegroundColor Green
+                Write-Host "You can close this window now." -ForegroundColor Gray
+                exit 0
+
+            } catch {
+                Write-Host "[ERROR] Failed to install PowerShell 7.5" -ForegroundColor Red
+                Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Host ""
+                Write-Host "Please install PowerShell 7.5 manually from:" -ForegroundColor Yellow
+                Write-Host "  https://github.com/PowerShell/PowerShell/releases" -ForegroundColor Cyan
+                Write-Host ""
+                Write-Host "After installation, run this script again." -ForegroundColor Yellow
+                exit 1
+            }
+        } else {
+            Write-Host ""
+            Write-Host "[!] PowerShell 7.5 installation declined." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "The setup will continue, but you may experience issues:" -ForegroundColor Yellow
+            Write-Host "  - Unicode characters may not display correctly" -ForegroundColor Gray
+            Write-Host "  - Some features may not work as expected" -ForegroundColor Gray
+            Write-Host ""
+            Write-Host "To install PowerShell 7.5 later, visit:" -ForegroundColor White
+            Write-Host "  https://github.com/PowerShell/PowerShell/releases" -ForegroundColor Cyan
+            Write-Host ""
+
+            if (-not $y) {
+                $continueChoice = Read-Host "Do you want to continue with the current version? (Y/N)"
+                if ($continueChoice -ne "Y" -and $continueChoice -ne "y") {
+                    Write-Host "[EXIT] Setup cancelled." -ForegroundColor Red
+                    exit 1
+                }
+            }
+        }
+    } else {
+        Write-Host "[OK] PowerShell version check passed!" -ForegroundColor Green
+        Write-Host "==================================================================" -ForegroundColor Cyan
+        Write-Host ""
+    }
 }
 
 # Function to convert string to valid Python module name
@@ -275,4 +404,30 @@ if (Test-Path ".gitignore") {
     }
 } else {
     Write-Host "   [!] No .gitignore found - setup files not excluded from git" -ForegroundColor Yellow
+}
+
+# Unblock all PowerShell scripts to prevent execution policy warnings
+Write-Host ""
+Write-Host "[CONFIG] Unblocking PowerShell scripts..." -ForegroundColor Yellow
+try {
+    $ps1Files = Get-ChildItem -Path . -Filter "*.ps1" -File -ErrorAction SilentlyContinue
+    $unblockedCount = 0
+
+    foreach ($file in $ps1Files) {
+        try {
+            Unblock-File -Path $file.FullName -ErrorAction SilentlyContinue
+            $unblockedCount++
+        } catch {
+            # Silently continue if file is already unblocked or can't be unblocked
+        }
+    }
+
+    if ($unblockedCount -gt 0) {
+        Write-Host "   [OK] Unblocked $unblockedCount PowerShell script(s)" -ForegroundColor Green
+        Write-Host "   [NOTE] You will no longer be prompted to confirm execution" -ForegroundColor Cyan
+    } else {
+        Write-Host "   [OK] All PowerShell scripts already unblocked" -ForegroundColor Green
+    }
+} catch {
+    Write-Host "   [!] Could not unblock some scripts - you may be prompted during execution" -ForegroundColor Yellow
 }

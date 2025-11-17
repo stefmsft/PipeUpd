@@ -2189,6 +2189,23 @@ def main() -> None:
 
     except ConfigurationError as e:
         logger.error(f"Configuration error: {str(e)}")
+        logger.error("")
+        logger.error("=" * 70)
+        logger.error("SETUP REQUIRED: Missing or invalid configuration")
+        logger.error("=" * 70)
+        logger.error("")
+        logger.error("To configure this application:")
+        logger.error("  1. Copy '.env.template' to '.env'")
+        logger.error("     Example: copy .env.template .env")
+        logger.error("")
+        logger.error("  2. Edit the '.env' file and set the required variables:")
+        logger.error("     - DIRECTORY_PIPE_RAW: Directory containing Salesforce reports")
+        logger.error("     - INPUT_SUIVI_RAW: Path to input Excel tracking file")
+        logger.error("     - OUTPUT_SUIVI_RAW: Path to output Excel tracking file")
+        logger.error("")
+        logger.error("  3. Run the script again")
+        logger.error("")
+        logger.error("=" * 70)
         sys.exit(1)
     except PipeProcessingError as e:
         logger.error(f"Processing error: {str(e)}")
