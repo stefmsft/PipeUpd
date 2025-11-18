@@ -2,14 +2,159 @@
 
 A Python tool for integrating Salesforce pipeline exports into Excel tracking files while preserving manually entered data.
 
+## 🚀 Quick Bootstrap (One-Line Install)
+
+Get started instantly by downloading and running the setup script directly from GitHub:
+
+### Windows (PowerShell)
+
+```powershell
+$env:KICKFROMREPO="true"; irm https://raw.githubusercontent.com/stefmsft/PipeUpd/main/ProjectSetup.ps1 | iex
+```
+
+### Linux/Mac (Bash)
+
+```bash
+export KICKFROMREPO=true && curl -fsSL https://raw.githubusercontent.com/stefmsft/PipeUpd/main/ProjectSetup.sh | bash
+```
+
+**What this does:**
+1. Downloads the ProjectSetup script from GitHub
+2. Automatically installs PowerShell 7.5+ (if needed on Windows)
+3. Installs git (if not present)
+4. Clones the PipeUpd repository into the current directory
+5. Installs uv package manager
+6. Sets up Python virtual environment
+7. Installs all dependencies
+
+**After bootstrap completes:**
+```powershell
+# 1. Configure your environment
+copy .env.template .env
+notepad .env  # Edit with your file paths
+
+# 2. Run the pipeline
+.\UpdatePipe.ps1
+```
+
+## Setup from a Git Clone of the Project
+
+If you prefer the traditional approach or want more control over the setup process, follow these steps:
+
+### 1. Clone the Repository
+
+```powershell
+# Clone the repository
+git clone https://github.com/stefmsft/PipeUpd.git
+cd PipeUpd
+```
+
+**Important: Encoding Fix for PowerShell 5.x Users**
+
+If you're using Windows PowerShell 5.x (not PowerShell 7.5+), you may encounter encoding issues. Run these commands after cloning:
+
+```powershell
+# Reset git attributes to fix encoding
+git rm --cached -r .
+git reset --hard HEAD
+
+# Verify PowerShell script encoding (should show UTF-8 with BOM)
+Get-Content ProjectSetup.ps1 -Encoding UTF8 | Select-Object -First 1
+```
+
+**Why?** The PowerShell scripts contain Unicode characters that require UTF-8 encoding with BOM. The `.gitattributes` file ensures correct encoding, but git needs to re-apply it after cloning on older PowerShell versions.
+
+**Note:** PowerShell 7.5+ handles this automatically. Consider upgrading (see Prerequisites section below).
+
+### 2. Run Project Setup
+
+```powershell
+.\ProjectSetup.ps1
+```
+
+**What this script does:**
+- Detects and installs PowerShell 7.5+ if needed (via winget)
+- Installs uv package manager
+- Creates Python virtual environment
+- Installs all required dependencies from pyproject.toml
+- Unblocks PowerShell scripts for execution
+
+**After setup completes**, you'll have a fully configured development environment ready to use.
+
+## Configuration (Required for Both Methods)
+
+After installation (via bootstrap or git clone), you must configure the application with your file paths:
+
+**1. Copy the template:**
+```powershell
+copy .env.template .env
+```
+
+**2. Edit the `.env` file with your paths:**
+```env
+DIRECTORY_PIPE_RAW=C:\path\to\salesforce\exports
+INPUT_SUIVI_RAW=C:\path\to\input\tracking.xlsm
+OUTPUT_SUIVI_RAW=C:\path\to\output\tracking.xlsm
+```
+
+**3. Optional: Configure additional settings:**
+```env
+# Hide specific Excel tabs (default hides internal tabs)
+HIDDEN_TABS=Owner Opty Tracking,Week History,Pipeline Close Lost
+
+# Set Tab 2 starting line in Owner Opty Tracking
+LINE_LAST_5W_OPTY=28
+
+# Exclude specific owners from tracking
+EXCLUDED_OPTY_OWNERS=Test User,Demo Owner
+
+# Enable Unicode icons (for PowerShell 7.5+)
+ENABLE_UNICODE=true
+
+# Set logging level
+LOG_LEVEL=INFO
+```
+
+## Usage
+
+Once configured, you can run the pipeline in several ways:
+
+**Recommended (PowerShell wrapper scripts):**
+```powershell
+# Process latest Salesforce export
+.\UpdatePipe.ps1
+
+# Process end user data
+.\UpdateEndUser.ps1
+```
+
+**Direct Python execution:**
+```bash
+# Process latest Salesforce export
+python UpdatePipe.py
+
+# Process specific file
+python UpdatePipe.py "C:\path\to\specific\export.xlsx"
+
+# Process all files in directory
+python UpdatePipe.py all
+```
+
+**Using uv (recommended for dependency management):**
+```bash
+uv run python UpdatePipe.py
+```
+
 ## Prerequisites
 
-- Windows PowerShell (for setup scripts)
-- Internet connection (for dependency installation)
+### System Requirements
+- **Windows**: Windows 10/11 recommended (PowerShell 5.x or 7.5+)
+- **Linux/Mac**: Bash shell (for Linux/Mac setup script)
+- **Internet connection**: Required for dependency installation
 
 ### PowerShell Version Recommendation
 
-**For best Unicode support and modern features**, we recommend upgrading to PowerShell 7.5+:
+**For best Unicode support and modern features**, we recommend PowerShell 7.5+:
 
 **Easiest Installation Method (via Winget):**
 ```powershell
@@ -42,66 +187,7 @@ winget install --id Microsoft.PowerShell --source winget
 
 **Note:** If you prefer to stay on Windows PowerShell 5.x, the scripts will work fine with ASCII fallback icons (`[!]` instead of `⚠️`).
 
-## Important: Git Clone Setup if not running Powershell 7.5+
-
-**If you clone this repository on a new device** and you are not using Powershell 7.5+, you MUST run these commands to ensure proper file encoding:
-
-```powershell
-# 1. Navigate to the project directory
-cd C:\Projects\PipeUpd
-
-# 2. Reset git attributes to fix encoding
-git rm --cached -r .
-git reset --hard HEAD
-
-# 3. Verify PowerShell script encoding (should show UTF-8 with BOM)
-Get-Content ProjectSetup.ps1 -Encoding UTF8 | Select-Object -First 1
-```
-
-**Why?** The PowerShell scripts contain Unicode emoji characters (🚀, ✅, etc.) that require UTF-8 encoding with BOM. The `.gitattributes` file ensures correct encoding, but git needs to re-apply it after cloning.
-
-**Symptoms of encoding issues:**
-- Parse errors mentioning "Jeton inattendu" or "unexpected token"
-- Garbled characters like "âœ…" in error messages
-- Scripts fail immediately when run
-
-## Quick Start
-
-### 1. Initial Setup
-
-```powershell
-.\ProjectSetup.ps1
-```
-
-This will:
-- Install Chocolatey, Git, and Python 3
-- Create Python virtual environment 
-- Install required dependencies
-- Create .env configuration file from template
-
-### 2. Configuration
-
-Edit the `.env` file with your file paths:
-
-```env
-DIRECTORY_PIPE_RAW=C:\path\to\salesforce\exports
-INPUT_SUIVI_RAW=C:\path\to\input\tracking.xlsm
-OUTPUT_SUIVI_RAW=C:\path\to\output\tracking.xlsm
-```
-
-### 3. Usage
-
-**Direct Execution:**
-```bash
-# Process latest Salesforce export
-python UpdatePipe.py
-
-# Process specific file  
-python UpdatePipe.py "C:\path\to\specific\export.xlsx"
-
-# Process all files in directory
-python UpdatePipe.py all
-```
+**The ProjectSetup.ps1 script will automatically offer to install PowerShell 7.5+ if not present.**
 
 ## What It Does
 

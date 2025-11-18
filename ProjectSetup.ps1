@@ -7,18 +7,28 @@
 param(
     [switch]$y,
     [switch]$help,
-    [switch]$SkipPwshCheck  # Internal flag to skip PowerShell version check after reinstall
+    [switch]$SkipPwshCheck,  # Internal flag to skip PowerShell version check after reinstall
+    [switch]$KICKFROMREPO    # Bootstrap mode: clone PipeUpd repo from GitHub
 )
+
+# Check for environment variable (for bootstrap command compatibility)
+if ($env:KICKFROMREPO -eq "true" -or $env:KICKFROMREPO -eq "1") {
+    $KICKFROMREPO = $true
+}
 
 # Set strict mode to exit on any error
 $ErrorActionPreference = "Stop"
 
 # Show help if requested
 if ($help) {
-    Write-Host "Python Boilerplate Setup Script" -ForegroundColor Green
-    Write-Host "Usage: .\ProjectSetup.ps1 [-y] [-help]" -ForegroundColor White
-    Write-Host "  -y      : Non-interactive mode (use defaults)" -ForegroundColor White
-    Write-Host "  -help   : Show this help message" -ForegroundColor White
+    Write-Host "PipeUpdUV Project Setup Script" -ForegroundColor Green
+    Write-Host "Usage: .\ProjectSetup.ps1 [-y] [-help] [-KICKFROMREPO]" -ForegroundColor White
+    Write-Host "  -y             : Non-interactive mode (use defaults)" -ForegroundColor White
+    Write-Host "  -help          : Show this help message" -ForegroundColor White
+    Write-Host "  -KICKFROMREPO  : Bootstrap mode - clone PipeUpd repo from GitHub" -ForegroundColor White
+    Write-Host "" -ForegroundColor White
+    Write-Host "Bootstrap from web:" -ForegroundColor Cyan
+    Write-Host '  $env:KICKFROMREPO="true"; irm https://raw.githubusercontent.com/stefmsft/PipeUpd/main/ProjectSetup.ps1 | iex' -ForegroundColor Gray
     exit 0
 }
 
@@ -172,6 +182,55 @@ function Get-CurrentModuleName {
         }
     }
     return $null
+}
+
+# ============================================================================
+# Git Installation Check (needed for KICKFROMREPO mode)
+# ============================================================================
+
+if ($KICKFROMREPO) {
+    Write-Host "[*] Bootstrap mode enabled - checking git installation..." -ForegroundColor Cyan
+
+    # Check if git is installed
+    try {
+        $gitVersion = git --version 2>$null
+        Write-Host "[OK] git is already installed ($gitVersion)" -ForegroundColor Green
+    } catch {
+        Write-Host "[+] Installing git via chocolatey..." -ForegroundColor Yellow
+
+        # Check if chocolatey is installed
+        try {
+            $chocoVersion = choco --version 2>$null
+            Write-Host "[OK] Chocolatey is already installed" -ForegroundColor Green
+        } catch {
+            Write-Host "[+] Installing Chocolatey package manager..." -ForegroundColor Yellow
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            try {
+                iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+                Write-Host "[OK] Chocolatey installed successfully" -ForegroundColor Green
+            } catch {
+                Write-Host "[ERROR] Failed to install Chocolatey" -ForegroundColor Red
+                Write-Host "Please install git manually from https://git-scm.com/download/win" -ForegroundColor Red
+                exit 1
+            }
+        }
+
+        # Install git using chocolatey
+        try {
+            choco install git -y
+            # Refresh environment variables
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+            # Verify git installation
+            $gitVersion = git --version 2>$null
+            Write-Host "[OK] git installed successfully ($gitVersion)" -ForegroundColor Green
+        } catch {
+            Write-Host "[ERROR] Failed to install git" -ForegroundColor Red
+            Write-Host "Please install git manually from https://git-scm.com/download/win" -ForegroundColor Red
+            exit 1
+        }
+    }
 }
 
 Write-Host "[*] Setting up Python development environment with uv..." -ForegroundColor Green
@@ -374,11 +433,55 @@ if (Test-Path ".git") {
         }
     }
 } else {
-    Write-Host "[NOTE] No git repository found. You can:" -ForegroundColor Yellow
-    Write-Host "    Initialize: git init && git add . && git commit -m 'Initial commit'" -ForegroundColor Cyan
-    Write-Host "    Or clone: git clone <your-repo-url> temp" -ForegroundColor Cyan
-    Write-Host "    Then: Move-Item temp\\.git . && Remove-Item temp -Recurse -Force" -ForegroundColor Cyan
-    Write-Host "    Finally: git reset --hard HEAD" -ForegroundColor Cyan
+    # No git repository found
+    if ($KICKFROMREPO) {
+        # Bootstrap mode: Clone PipeUpd repository into current directory
+        Write-Host "[BOOTSTRAP] No git repository found - cloning PipeUpd from GitHub..." -ForegroundColor Cyan
+        Write-Host ""
+
+        $repoUrl = "https://github.com/stefmsft/PipeUpd.git"
+
+        try {
+            # Check if current directory is empty (except for this script)
+            $existingFiles = Get-ChildItem -Path . -Force | Where-Object { $_.Name -ne "ProjectSetup.ps1" }
+            if ($existingFiles.Count -gt 0) {
+                Write-Host "[WARNING] Current directory is not empty!" -ForegroundColor Yellow
+                Write-Host "Found $($existingFiles.Count) existing file(s)/folder(s)" -ForegroundColor Yellow
+                Write-Host ""
+                if (-not $y) {
+                    $confirm = Read-Host "Clone into current directory anyway? This will merge with existing files (Y/N)"
+                    if ($confirm -ne "Y" -and $confirm -ne "y") {
+                        Write-Host "[CANCELLED] Bootstrap cancelled by user" -ForegroundColor Red
+                        exit 1
+                    }
+                }
+            }
+
+            Write-Host "[+] Cloning repository into current directory: $repoUrl" -ForegroundColor Yellow
+            git clone $repoUrl .
+
+            Write-Host "[OK] Repository cloned successfully!" -ForegroundColor Green
+            Write-Host ""
+            Write-Host "[OK] Bootstrap complete! PipeUpd project is now set up in the current directory." -ForegroundColor Green
+            Write-Host ""
+            Write-Host "Next steps:" -ForegroundColor Cyan
+            Write-Host "  1. Copy .env.template to .env:       copy .env.template .env" -ForegroundColor White
+            Write-Host "  2. Edit .env with your configuration: notepad .env" -ForegroundColor White
+            Write-Host "  3. Run the pipeline:                  .\UpdatePipe.ps1" -ForegroundColor White
+            Write-Host ""
+        } catch {
+            Write-Host "[ERROR] Failed to clone repository: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Please check your internet connection and try again" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        # Normal mode: Show manual instructions
+        Write-Host "[NOTE] No git repository found. You can:" -ForegroundColor Yellow
+        Write-Host "    Initialize: git init && git add . && git commit -m 'Initial commit'" -ForegroundColor Cyan
+        Write-Host "    Or clone: git clone <your-repo-url> temp" -ForegroundColor Cyan
+        Write-Host "    Then: Move-Item temp\\.git . && Remove-Item temp -Recurse -Force" -ForegroundColor Cyan
+        Write-Host "    Finally: git reset --hard HEAD" -ForegroundColor Cyan
+    }
 }
 
 # Add project setup files and documentation to .gitignore
