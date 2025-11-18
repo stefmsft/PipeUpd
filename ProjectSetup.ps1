@@ -444,7 +444,9 @@ if (Test-Path ".git") {
         try {
             # Check if current directory is empty (except for this script)
             $existingFiles = Get-ChildItem -Path . -Force | Where-Object { $_.Name -ne "ProjectSetup.ps1" }
-            if ($existingFiles.Count -gt 0) {
+            $isEmptyDir = $existingFiles.Count -eq 0
+
+            if (-not $isEmptyDir) {
                 Write-Host "[WARNING] Current directory is not empty!" -ForegroundColor Yellow
                 Write-Host "Found $($existingFiles.Count) existing file(s)/folder(s)" -ForegroundColor Yellow
                 Write-Host ""
@@ -458,7 +460,49 @@ if (Test-Path ".git") {
             }
 
             Write-Host "[+] Cloning repository into current directory: $repoUrl" -ForegroundColor Yellow
-            git clone $repoUrl .
+
+            if ($isEmptyDir) {
+                # Directory is empty - use standard clone
+                git clone $repoUrl . 2>&1 | Out-Null
+
+                if ($LASTEXITCODE -ne 0) {
+                    throw "git clone failed with exit code $LASTEXITCODE"
+                }
+            } else {
+                # Directory is not empty - use init + remote + fetch + checkout
+                Write-Host "   [NOTE] Using git init method for non-empty directory" -ForegroundColor Cyan
+
+                # Initialize git repository
+                git init 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    throw "git init failed with exit code $LASTEXITCODE"
+                }
+
+                # Add remote
+                git remote add origin $repoUrl 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    throw "git remote add failed with exit code $LASTEXITCODE"
+                }
+
+                # Fetch from remote
+                Write-Host "   [+] Fetching from remote..." -ForegroundColor Gray
+                git fetch origin 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    throw "git fetch failed with exit code $LASTEXITCODE"
+                }
+
+                # Checkout main branch (force to overwrite conflicts)
+                Write-Host "   [+] Checking out main branch..." -ForegroundColor Gray
+                git checkout -f -B main origin/main 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    throw "git checkout failed with exit code $LASTEXITCODE"
+                }
+            }
+
+            # Verify clone was successful by checking for key files
+            if (-not (Test-Path ".git") -or -not (Test-Path "UpdatePipe.py")) {
+                throw "Repository clone verification failed - missing expected files"
+            }
 
             Write-Host "[OK] Repository cloned successfully!" -ForegroundColor Green
             Write-Host ""
@@ -471,7 +515,12 @@ if (Test-Path ".git") {
             Write-Host ""
         } catch {
             Write-Host "[ERROR] Failed to clone repository: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "Please check your internet connection and try again" -ForegroundColor Red
+            Write-Host "Error details: $($_)" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "Possible solutions:" -ForegroundColor Yellow
+            Write-Host "  1. Check your internet connection" -ForegroundColor White
+            Write-Host "  2. Try running from an empty directory: mkdir PipeUpd; cd PipeUpd" -ForegroundColor White
+            Write-Host "  3. Manually clone: git clone $repoUrl" -ForegroundColor White
             exit 1
         }
     } else {
