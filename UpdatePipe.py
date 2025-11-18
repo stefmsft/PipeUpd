@@ -199,6 +199,17 @@ if EXCLUDED_OPTY_OWNERS:
 else:
     EXCLUDED_OPTY_OWNERS = []
 
+# Owner Opty Tracking: Starting line for Tab 2 (Last 5 Weeks Detail)
+LINE_LAST_5W_OPTY = int(os.getenv("LINE_LAST_5W_OPTY", "28"))
+
+# Hidden tabs: List of Excel sheet names to hide
+HIDDEN_TABS = os.getenv("HIDDEN_TABS", "Owner Opty Tracking,Week History,Pipeline Close Lost")
+# Parse comma-separated list and strip whitespace
+if HIDDEN_TABS:
+    HIDDEN_TABS = [tab.strip() for tab in HIDDEN_TABS.split(',') if tab.strip()]
+else:
+    HIDDEN_TABS = []
+
 # To avoid localisation colision
 # Define col index for labels in Pipe file
 # Only done for col name with problem
@@ -266,6 +277,10 @@ def display_environment_config() -> None:
 
         # Owner Opportunity Tracking configuration
         logger.debug(f"EXCLUDED_OPTY_OWNERS = {EXCLUDED_OPTY_OWNERS} (default: [])")
+        logger.debug(f"LINE_LAST_5W_OPTY = {LINE_LAST_5W_OPTY} (default: 28)")
+
+        # Excel tab configuration
+        logger.debug(f"HIDDEN_TABS = {HIDDEN_TABS} (default: ['Owner Opty Tracking', 'Week History', 'Pipeline Close Lost'])")
 
         # Backup configuration
         logger.debug(f"BCKUP_PIPE_FILE = {BCKUP_PIPE_FILE} (default: False)")
@@ -1438,6 +1453,9 @@ def WriteOwnerOpptyTrackingToExcel(workbook: openpyxl.Workbook, df_otrack: pd.Da
         workbook: Excel workbook to write to
         df_otrack: Owner Opportunity Tracking DataFrame (Table 1) to write
         df_details: Owner Opportunity Details DataFrame (Table 2) to write
+
+    Raises:
+        PipeProcessingError: If Table 1 content exceeds the fixed start line for Table 2
     """
     try:
         # Remove existing Owner Opty Tracking tab if it exists
@@ -1455,21 +1473,44 @@ def WriteOwnerOpptyTrackingToExcel(workbook: openpyxl.Workbook, df_otrack: pd.Da
         table1_rows = len(df_otrack) + 1  # +1 for header
         logger.info(f"Written Owner Opty Tracking Table 1 with {len(df_otrack)} rows to Excel")
 
-        # Add 5 empty rows as separator
-        for _ in range(5):
+        # Table 2 starts at fixed line defined by LINE_LAST_5W_OPTY
+        table2_start_row = LINE_LAST_5W_OPTY
+
+        # Validate that Table 1 doesn't exceed the fixed start line for Table 2
+        if table1_rows >= table2_start_row:
+            error_msg = (
+                f"Owner Opty Tracking Table 1 size conflict: "
+                f"Table 1 has {table1_rows} rows (including header) but Table 2 must start at line {table2_start_row}. "
+                f"Table 1 exceeds available space by {table1_rows - table2_start_row + 1} row(s). "
+                f"Solutions: "
+                f"(1) Increase LINE_LAST_5W_OPTY in .env to {table1_rows + 6} or higher, "
+                f"(2) Reduce number of owners in Owner Opty Tracking, "
+                f"(3) Add more owners to EXCLUDED_OPTY_OWNERS in .env"
+            )
+            logger.error(error_msg)
+            raise PipeProcessingError(error_msg)
+
+        # Calculate how many empty rows needed to reach the fixed start line
+        empty_rows_needed = table2_start_row - table1_rows - 1  # -1 because next append is at table1_rows+1
+
+        # Add empty rows to position Table 2 at the fixed line
+        for _ in range(empty_rows_needed):
             ws_otrack.append([])
 
-        # Write Table 2 (detail rows) below
-        # Starting row for Table 2
-        table2_start_row = table1_rows + 6  # Table 1 + 5 empty rows + 1
+        logger.debug(f"Added {empty_rows_needed} empty rows between Table 1 and Table 2")
 
+        # Write Table 2 (detail rows) at the fixed starting line
         for r in dataframe_to_rows(df_details, index=False, header=True):
             ws_otrack.append(r)
 
-        logger.info(f"Written Owner Opty Tracking Table 2 with {len(df_details)} detail rows starting at row {table2_start_row}")
+        logger.info(f"Written Owner Opty Tracking Table 2 with {len(df_details)} detail rows starting at fixed line {table2_start_row}")
 
+    except PipeProcessingError:
+        # Re-raise PipeProcessingError to be caught by main error handler
+        raise
     except Exception as e:
         logger.error(f"Error writing Owner Opty Tracking to Excel: {str(e)}")
+        raise PipeProcessingError(f"Failed to write Owner Opty Tracking: {str(e)}")
 
 def Mapping_WeekColumn(Key: str, old_col_name: str, new_col_name: str) -> str:
     """Preserve data from existing week columns when renaming
@@ -2130,6 +2171,23 @@ def UpdatePipe(LatestPipe: str) -> None:
         ####################################
 
         WriteOwnerOpptyTrackingToExcel(myworkbook, df_otrack, df_opty_details)
+
+        ####################################
+        # Hide configured tabs
+        ####################################
+
+        if HIDDEN_TABS:
+            hidden_count = 0
+            for tab_name in HIDDEN_TABS:
+                if tab_name in myworkbook.sheetnames:
+                    myworkbook[tab_name].sheet_state = 'hidden'
+                    hidden_count += 1
+                    logger.debug(f"Hidden tab: '{tab_name}'")
+                else:
+                    logger.warning(f"Tab '{tab_name}' not found in workbook, cannot hide")
+
+            if hidden_count > 0:
+                logger.info(f"Hidden {hidden_count} tab(s): {', '.join(HIDDEN_TABS[:3])}{'...' if len(HIDDEN_TABS) > 3 else ''}")
 
         myworkbook.save(OUTPUT_SUIVI_RAW)
         # Create colored log message for saving file
