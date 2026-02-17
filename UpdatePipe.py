@@ -199,6 +199,13 @@ if EXCLUDED_OPTY_OWNERS:
 else:
     EXCLUDED_OPTY_OWNERS = []
 
+EXCLUDED_PIPE_OWNERS = os.getenv("EXCLUDED_PIPE_OWNERS", "").strip().strip('"').strip("'")
+# Parse comma-separated list and strip whitespace
+if EXCLUDED_PIPE_OWNERS:
+    EXCLUDED_PIPE_OWNERS = [owner.strip() for owner in EXCLUDED_PIPE_OWNERS.split(',') if owner.strip()]
+else:
+    EXCLUDED_PIPE_OWNERS = []
+
 # Owner Opty Tracking: Starting line for Tab 2 (Last 5 Weeks Detail)
 LINE_LAST_5W_OPTY = int(os.getenv("LINE_LAST_5W_OPTY", "28"))
 
@@ -277,6 +284,7 @@ def display_environment_config() -> None:
 
         # Owner Opportunity Tracking configuration
         logger.debug(f"EXCLUDED_OPTY_OWNERS = {EXCLUDED_OPTY_OWNERS} (default: [])")
+        logger.debug(f"EXCLUDED_PIPE_OWNERS = {EXCLUDED_PIPE_OWNERS} (default: [])")
         logger.debug(f"LINE_LAST_5W_OPTY = {LINE_LAST_5W_OPTY} (default: 28)")
 
         # Excel tab configuration
@@ -1831,10 +1839,12 @@ def UpdatePipe(LatestPipe: str) -> None:
     # 'William ROMAN', 'Corinne CORDEIRO', 'Kajanan SHAN', 'Younes Giaccheri', 'Aziz ABELHAOU', 'Hippolyte FOVIAUX', 'Hatem ABBACI', 'Mehdi Dahbi', 'Gwenael BOJU', 'Charles TEZENAS', Etc ...
     
         # Owner filtering (more efficient with single isin operation)
-        excluded_owners = ['Clement VIEILLEFONT', 'Vincent HALLER', 'Mathieu LUTZ', 'Calvin Chao']
-        owner_mask = ~df_pipe[cols[COL_OPTYOWNER]].isin(excluded_owners)
-        df_pipe = df_pipe[owner_mask]
-        logger.debug(f"Filtered out excluded owners")
+        if EXCLUDED_PIPE_OWNERS:
+            owner_mask = ~df_pipe[cols[COL_OPTYOWNER]].isin(EXCLUDED_PIPE_OWNERS)
+            df_pipe = df_pipe[owner_mask]
+            logger.debug(f"Filtered out {len(EXCLUDED_PIPE_OWNERS)} excluded pipe owners: {EXCLUDED_PIPE_OWNERS}")
+        else:
+            logger.debug(f"No excluded pipe owners configured, keeping all owners")
 
         # Client to Drop
         # 'Generic End User'
