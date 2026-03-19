@@ -231,21 +231,29 @@ if HIDDEN_TABS:
 else:
     HIDDEN_TABS = []
 
-# To avoid localisation colision
-# Define col index for labels in Pipe file
-# Only done for col name with problem
-COL_OPTYOWNER=0
-COL_CREATED=1
-COL_CLOSED=2
-COL_STAGE=3
-COL_CUSTOMER=6
-COL_TOTPRICE=9
-COL_SALESMODELNAME=10
+# Column index constants — default values, overridden dynamically inside UpdatePipe
+# based on actual column names found in the loaded Salesforce file (EN or FR).
+# Never access df_pipe columns by hardcoded name — always use df[cols[COL_*]].
+COL_OPTYOWNER      = 0
+COL_CREATED        = 1
+COL_CLOSED         = 2
+COL_STAGE          = 3
+COL_CUSTOMER       = 6
+COL_SALESPRICE     = 8   # overridden dynamically
+COL_TOTPRICE       = 9   # overridden dynamically
+COL_SALESMODELNAME = 10  # overridden dynamically
 
-# Global variable to store actual column names (language-specific)
-# This is set during dataframe processing after column reorganization
-# Allows language-independent access via cols[COL_*] pattern
+# Global list of actual column names from the loaded file (set inside UpdatePipe).
+# Language-independent access pattern: df[cols[COL_STAGE]] instead of df['Stage']/'Étape'.
 cols = None
+
+
+def _find_col(col_list: list, *variants) -> int:
+    """Return the index of the first matching variant in col_list, or -1 if none found."""
+    for v in variants:
+        if v in col_list:
+            return col_list.index(v)
+    return -1
 
 ################################################################
 # Exception Classes
@@ -688,7 +696,7 @@ def Mapping_FrCast(row: pd.Series) -> str:
             try:
                 # rowval = df_master.loc[df_master['Key'] == Key]
                 # WR = rowval['Win Rate'].values[0].replace('%', '')
-                WR = row['Win Rate'].replace('%', '')
+                WR = str(row['Win Rate']).replace('%', '')
                 # Check if the value is NaN or space (after converting to string and stripping whitespace)
                 if pd.isna(WR) or str(WR).strip() == '':
                     return ''
@@ -1807,15 +1815,44 @@ def UpdatePipe(LatestPipe: str) -> None:
             df_pipe.drop(columns=unnamed_cols, inplace=True)
             logger.debug(f"Dropped {len(unnamed_cols)} unnamed columns")
 
-        # Reorg Columns to fit the expected Master Format
-        # 'Opportunity Owner','Created Date','Close Date','Stage','Opportunity Number','Indirect Account','End Customer','Estimated Quantity','Sales Price','Estimated Total Price','Sales Model Name','Part Number','Account Name','Product Line','Deal Type'
+        # Detect column positions by name — works for both English and French exports.
+        # Replaces the old positional pop/insert reorg which was designed for English
+        # (15 cols) and produced wrong indices on French exports (14 cols, different layout).
         cols = list(df_pipe.columns.values)
-        # Col numbers starts at 0
-        Cval = cols.pop(11)
-        cols.insert(7, Cval)
-        Cval = cols.pop(11)
-        cols.insert(7, Cval)
-        df_pipe = df_pipe.reindex(columns=cols)
+
+        global COL_OPTYOWNER, COL_CREATED, COL_CLOSED, COL_STAGE, COL_CUSTOMER
+        global COL_SALESPRICE, COL_TOTPRICE, COL_SALESMODELNAME
+
+        COL_OPTYOWNER      = _find_col(cols, 'Opportunity Owner',  "Propriétaire de l'opportunité")
+        COL_CREATED        = _find_col(cols, 'Created Date',       'Date de création')
+        COL_CLOSED         = _find_col(cols, 'Close Date',         'Date de clôture')
+        COL_STAGE          = _find_col(cols, 'Stage',              'Étape')
+        COL_CUSTOMER       = _find_col(cols, 'End Customer')
+        COL_SALESMODELNAME = _find_col(cols, 'Sales Model Name',   'Nom du produit')
+        COL_SALESPRICE     = _find_col(cols, 'Sales Price',        'Prix de vente')
+        COL_TOTPRICE       = _find_col(cols, 'Estimated Total Price')
+
+        # French export has no "Estimated Total Price" — compute it from Quantity × Unit Price.
+        if COL_TOTPRICE == -1:
+            col_qty = _find_col(cols, 'Estimated Quantity', 'Quantité')
+            if col_qty != -1 and COL_SALESPRICE != -1:
+                df_pipe['Estimated Total Price'] = (
+                    pd.to_numeric(df_pipe[cols[col_qty]], errors='coerce') *
+                    pd.to_numeric(df_pipe[cols[COL_SALESPRICE]], errors='coerce')
+                )
+                cols.append('Estimated Total Price')
+                COL_TOTPRICE = len(cols) - 1
+                logger.info("French format: computed 'Estimated Total Price' from Quantity × Unit Price")
+            else:
+                raise PipeProcessingError(
+                    "Cannot determine total price: missing Quantity or Sales Price column")
+
+        logger.debug(
+            f"Column indices: STAGE={COL_STAGE}({cols[COL_STAGE]}), "
+            f"TOTPRICE={COL_TOTPRICE}({cols[COL_TOTPRICE]}), "
+            f"SALESMODEL={COL_SALESMODELNAME}({cols[COL_SALESMODELNAME]}), "
+            f"SALESPRICE={COL_SALESPRICE}({cols[COL_SALESPRICE]})"
+        )
 
         ####################################
         # Cleanup Data
@@ -1850,21 +1887,23 @@ def UpdatePipe(LatestPipe: str) -> None:
         # Client to Drop
         # 'Generic End User'
         # if Estimated Tot Price < 50K
-        COL_SALESPRICE = 8
-        COL_TOTPRICE = 9
+        # Coerce to numeric — French exports may store values as strings
+        df_pipe[cols[COL_TOTPRICE]] = pd.to_numeric(df_pipe[cols[COL_TOTPRICE]], errors='coerce')
         mask = (df_pipe[cols[COL_TOTPRICE]] < 50000) & df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')
         df_pipe.drop(df_pipe[mask].index, inplace=True)
         # Remove also the blank tot price for those 'Generic'
         mask = (df_pipe[cols[COL_TOTPRICE]]).isna() & df_pipe[cols[COL_CUSTOMER]].str.startswith('Generic')
         df_pipe.drop(df_pipe[mask].index, inplace=True)
 
-        # Remove product lines more efficiently
+        # Remove excluded product lines (column absent in French exports — skip if not present)
         excluded_product_lines = ['LM', 'MS', 'MR']
-        product_mask = ~df_pipe['Product Line'].isin(excluded_product_lines)
-        df_pipe = df_pipe[product_mask]
-        df_pipe['Product Line'] = df_pipe['Product Line'].fillna("")
-        logger.debug(f"Filtered out excluded product lines")
-        # df_pipe['Product Line'].fillna("", inplace=True) - Deprecated 3.12
+        if 'Product Line' in df_pipe.columns:
+            product_mask = ~df_pipe['Product Line'].isin(excluded_product_lines)
+            df_pipe = df_pipe[product_mask]
+            df_pipe['Product Line'] = df_pipe['Product Line'].fillna("")
+            logger.debug(f"Filtered out excluded product lines")
+        else:
+            logger.debug("No 'Product Line' column in this export — product line filter skipped")
 
 
         # Cleanup OPTY (remove NaN)
@@ -2118,6 +2157,8 @@ def UpdatePipe(LatestPipe: str) -> None:
 
         SFPipeAmmount = df_pipe[cols[COL_TOTPRICE]].sum()
         df_pipe['Revenu-Val'] = df_pipe['Estimated\nQuantity'].apply(pd.to_numeric, errors='coerce')
+        # Coerce Sales Price to numeric — French exports may store it as string
+        df_pipe[cols[COL_SALESPRICE]] = pd.to_numeric(df_pipe[cols[COL_SALESPRICE]], errors='coerce')
         df_pipe['Revenu-Val'] = df_pipe['Revenu-Val'] * df_pipe[cols[COL_SALESPRICE]]
         EstPipeAmmount = df_pipe['Revenu-Val'].sum()
         df_pipe.drop('Revenu-Val',axis=1,inplace=True)
@@ -2131,6 +2172,13 @@ def UpdatePipe(LatestPipe: str) -> None:
         except Exception as e:
             logger.debug(f"Error cleaning None columns: {str(e)}")
 
+        if len(df_pipe.columns) != len(df_master.columns):
+            raise PipeProcessingError(
+                f"Column count mismatch before write: df_pipe={len(df_pipe.columns)}, "
+                f"df_master={len(df_master.columns)}\n"
+                f"  df_pipe cols:   {list(df_pipe.columns)}\n"
+                f"  df_master cols: {list(df_master.columns)}"
+            )
         df_pipe.columns = df_master.columns
 
         worksheet.delete_rows(3, amount=(worksheet.max_row - 2))
