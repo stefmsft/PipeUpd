@@ -623,15 +623,18 @@ def Mapping_RevEur(Key: str) -> Any:
         logger.debug(f"Error in Mapping_RevEur for Key {Key}: {str(e)}")
         return ''
 
-def Mapping_QtrInvoice(Key: str) -> str:
+def Mapping_QtrInvoice(row: pd.Series) -> str:
     """Map quarter invoice values with automatic calculation from close date
 
     Args:
-        Key: Unique key for the opportunity
+        row: Pandas Series containing opportunity data
 
     Returns:
         Quarter invoice string in format QnFYyy or preserved value
     """
+    global cols
+
+    Key = row['Key']
 
      # Rules :
      # If nothing, leave nothing
@@ -644,11 +647,13 @@ def Mapping_QtrInvoice(Key: str) -> str:
 
     # Update : We translate the Close Date in QnFy even if the field is blank - Then it can eventually be changed. As long as it is in the  right format this wont be changed here.
     try:
-
-        CloseDate = Mapping_Generic(Key,'Date de clôture')
-        if str(CloseDate) != '':
-            Quarter,Year = GetQFFromDate(CloseDate)
-            seq = f'Q{Quarter}FY{Year}'
+        # Use current row's close date (more robust for new entries)
+        CloseDate_raw = row[cols[COL_CLOSED]] if cols is not None else row.get('Date de clôture', '')
+        if CloseDate_raw and str(CloseDate_raw) != '':
+            CloseDate = sanitize_date_value(CloseDate_raw)
+            if CloseDate:
+                Quarter,Year = GetQFFromDate(CloseDate)
+                seq = f'Q{Quarter}FY{Year}'
 
     except:
         pass
@@ -2021,7 +2026,7 @@ def UpdatePipe(LatestPipe: str) -> None:
         df_pipe['Revenu From\nEstinated Qty'] = df_pipe['Key'].map(Mapping_RevEur)
 
         # Column Quarter Invoice
-        df_pipe['Quarter Invoice\nFacturation'] = df_pipe['Key'].map(Mapping_QtrInvoice)
+        df_pipe['Quarter Invoice\nFacturation'] = df_pipe.apply(Mapping_QtrInvoice, axis=1)
 
         # Column Forecast projet
         # df_pipe['Forecast projet\nMenu déroulant'] = df_pipe['Key'].map(Mapping_FrCast)
