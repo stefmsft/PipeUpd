@@ -1812,6 +1812,18 @@ def UpdatePipe(LatestPipe: str) -> None:
             df_pipe.drop(columns=unnamed_cols, inplace=True)
             logger.debug(f"Dropped {len(unnamed_cols)} unnamed columns")
 
+        # Handle new Salesforce export format: 'Estimated Total Price' and 'Product Line'
+        # are absent. Insert them at positions 7 and 13 so the reorg below (pop/insert)
+        # produces the same result as with the old format.
+        if 'Estimated Total Price' not in df_pipe.columns:
+            logger.info("New SF export format detected — 'Estimated Total Price' missing, computing from Estimated Quantity × Sales Price")
+            est_qty = pd.to_numeric(df_pipe.get('Estimated Quantity'), errors='coerce').fillna(0)
+            sal_prc = pd.to_numeric(df_pipe.get('Sales Price'), errors='coerce').fillna(0)
+            df_pipe.insert(7, 'Estimated Total Price', est_qty * sal_prc)
+        if 'Product Line' not in df_pipe.columns:
+            logger.info("New SF export format detected — 'Product Line' missing, adding empty column")
+            df_pipe.insert(13, 'Product Line', '')
+
         # Reorg Columns to fit the expected Master Format
         # 'Opportunity Owner','Created Date','Close Date','Stage','Opportunity Number','Indirect Account','End Customer','Estimated Quantity','Sales Price','Estimated Total Price','Sales Model Name','Part Number','Account Name','Product Line','Deal Type'
         cols = list(df_pipe.columns.values)
