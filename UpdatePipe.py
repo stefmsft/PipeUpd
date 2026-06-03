@@ -125,7 +125,7 @@ def _resolve_env_file() -> str:
     if os.path.exists(config_path):
         import configparser
         cfg = configparser.ConfigParser()
-        cfg.read(config_path, encoding="utf-8")
+        cfg.read(config_path, encoding="utf-8-sig")
         suffix = cfg.get("Environment", "ENV_SUFFIX", fallback="").strip()
         if suffix:
             return f".env.{suffix}"
