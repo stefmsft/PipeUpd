@@ -1815,10 +1815,12 @@ def UpdatePipe(LatestPipe: str) -> None:
         # Handle new Salesforce export format: 'Estimated Total Price' and 'Product Line'
         # are absent. Insert them at positions 7 and 13 so the reorg below (pop/insert)
         # produces the same result as with the old format.
-        if 'Estimated Total Price' not in df_pipe.columns:
+        if 'Estimated Total Price' not in df_pipe.columns and 'Prix total' not in df_pipe.columns:
             logger.info("New SF export format detected — 'Estimated Total Price' missing, computing from Estimated Quantity × Sales Price")
-            est_qty = pd.to_numeric(df_pipe.get('Estimated Quantity'), errors='coerce').fillna(0)
-            sal_prc = pd.to_numeric(df_pipe.get('Sales Price'), errors='coerce').fillna(0)
+            qty_col = 'Estimated Quantity' if 'Estimated Quantity' in df_pipe.columns else 'Quantité'
+            price_col = 'Sales Price' if 'Sales Price' in df_pipe.columns else 'Prix de vente'
+            est_qty = pd.to_numeric(df_pipe.get(qty_col), errors='coerce').fillna(0)
+            sal_prc = pd.to_numeric(df_pipe.get(price_col), errors='coerce').fillna(0)
             df_pipe.insert(7, 'Estimated Total Price', est_qty * sal_prc)
         if 'Product Line' not in df_pipe.columns:
             logger.info("New SF export format detected — 'Product Line' missing, adding empty column")
