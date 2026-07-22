@@ -239,6 +239,8 @@ COL_CREATED=1
 COL_CLOSED=2
 COL_STAGE=3
 COL_CUSTOMER=6
+COL_QTY=7
+COL_SALESPRICE=8
 COL_TOTPRICE=9
 COL_SALESMODELNAME=10
 
@@ -583,8 +585,11 @@ def Mapping_Generic(Key: str, Col: str) -> str:
 #Mapping Functions for
 # 'Estimated\nQuantity', 'Revenu From\nEstinated Qty', 'Quarter Invoice\nFacturation', 'Forecast projet\nMenu déroulant', 'Next Step & Support demandé / Commentaire'
 
-def Mapping_Qty(Key: str) -> Any:
+def Mapping_Qty(row: pd.Series) -> Any:
     """Map quantity values with formula handling"""
+    global cols
+
+    Key = row['Key']
     try:
         eq = Mapping_Generic(Key, 'Estimated\nQuantity')
 
@@ -592,22 +597,35 @@ def Mapping_Qty(Key: str) -> Any:
             rowval = df_master.loc[df_master['Key'] == Key]
             if len(rowval) > 0 and 'Quantité' in rowval.columns:
                 eq = rowval['Quantité'].values[0]
+            elif cols is not None:
+                # No prior master history for this opportunity (first time seen) -
+                # fall back to the current pipe row's own quantity instead of leaving it blank
+                eq = row[cols[COL_QTY]]
 
         return sanitize_numeric_value(eq) if eq else ''
     except Exception as e:
         logger.debug(f"Error in Mapping_Qty for Key {Key}: {str(e)}")
         return ''
 
-def Mapping_RevEur(Key: str) -> Any:
+def Mapping_RevEur(row: pd.Series) -> Any:
     """Map revenue values with formula and calculation handling"""
+    global cols
+
+    Key = row['Key']
     try:
         rev = Mapping_Generic(Key, 'Revenu From\nEstinated Qty')
+        rowval = df_master.loc[df_master['Key'] == Key]
+
+        if len(rowval) == 0:
+            # No prior master history for this opportunity (first time seen) -
+            # compute from the current pipe row's own (already-mapped) quantity and price
+            if cols is not None:
+                qty = sanitize_numeric_value(row['Estimated\nQuantity'])
+                price = sanitize_numeric_value(row[cols[COL_SALESPRICE]])
+                return qty * price if qty and price else ''
+            return ''
 
         if rev and rev != '':
-            rowval = df_master.loc[df_master['Key'] == Key]
-            if len(rowval) == 0:
-                return ''
-
             if str(rev).startswith('='):
                 if 'Prix total' in rowval.columns:
                     rev = sanitize_numeric_value(rowval['Prix total'].values[0])
@@ -2034,10 +2052,10 @@ def UpdatePipe(LatestPipe: str) -> None:
         #df_master['Key'] = df_master.apply(lambda row: f'{row["Date de création"]}{row["Quantité"]}', axis = 1)
 
         # Column Quantity
-        df_pipe['Estimated\nQuantity'] = df_pipe['Key'].map(Mapping_Qty)
+        df_pipe['Estimated\nQuantity'] = df_pipe.apply(Mapping_Qty, axis=1)
 
-        # Column Revenu projet
-        df_pipe['Revenu From\nEstinated Qty'] = df_pipe['Key'].map(Mapping_RevEur)
+        # Column Revenu projet (depends on 'Estimated\nQuantity' being set above)
+        df_pipe['Revenu From\nEstinated Qty'] = df_pipe.apply(Mapping_RevEur, axis=1)
 
         # Column Quarter Invoice
         df_pipe['Quarter Invoice\nFacturation'] = df_pipe.apply(Mapping_QtrInvoice, axis=1)
