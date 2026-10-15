@@ -151,7 +151,10 @@ def _find_sheet_file(zf, tab_name: str) -> str | None:
 
 
 def _resolve_zip_path(base_dir: str, relative_target: str) -> str:
-    """Resolve a relative .rels target from a base directory to a ZIP path."""
+    """Resolve a .rels Target to a ZIP path. Targets starting with '/' are
+    package-root-relative (per OOXML/OPC); anything else is relative to base_dir."""
+    if relative_target.startswith("/"):
+        return relative_target.lstrip("/")
     parts = base_dir.split("/")
     for seg in relative_target.split("/"):
         if seg == "..":
@@ -307,6 +310,71 @@ def _has_drawing_rel(zf, sheet_file: str) -> bool:
     return False
 
 
+def _find_drawing_and_charts(zf, sheet_file: str) -> tuple[str | None, list[str]]:
+    """Return (drawing part path, [chart part paths in rId order]) for a sheet's
+    drawing relationship, or (None, []) if the sheet has no drawing rel."""
+    rels_path = f"xl/worksheets/_rels/{sheet_file}.rels"
+    if rels_path not in zf.namelist():
+        return None, []
+    rels_root = ET.fromstring(zf.read(rels_path))
+    drawing_target = None
+    for rel in rels_root.iter(f"{{{NS_RELS}}}Relationship"):
+        if rel.get("Type") == RT_DRAWING:
+            drawing_target = rel.get("Target", "")
+            break
+    if drawing_target is None:
+        return None, []
+
+    drawing_path = _resolve_zip_path("xl/worksheets", drawing_target)
+    drawing_dir  = "/".join(drawing_path.split("/")[:-1])
+    drawing_name = drawing_path.split("/")[-1]
+    drawing_rels_path = f"{drawing_dir}/_rels/{drawing_name}.rels"
+
+    chart_rels = []  # (numeric rId, path)
+    if drawing_rels_path in zf.namelist():
+        d_rels_root = ET.fromstring(zf.read(drawing_rels_path))
+        for rel in d_rels_root.iter(f"{{{NS_RELS}}}Relationship"):
+            if rel.get("Type") == RT_CHART:
+                m = re.match(r"rId(\d+)", rel.get("Id", ""))
+                order = int(m.group(1)) if m else 0
+                chart_rels.append((order, _resolve_zip_path(drawing_dir, rel.get("Target", ""))))
+    chart_rels.sort(key=lambda t: t[0])
+    return drawing_path, [path for _, path in chart_rels]
+
+
+def _local_tag(tag: str) -> str:
+    return tag.split("}")[-1] if "}" in tag else tag
+
+
+def _chart_axes_valid(chart_bytes: bytes) -> bool:
+    """Detect the referential-integrity break seen after an openpyxl re-save:
+    an axis (catAx/valAx/dateAx/serAx) whose <crossAx> points at an axId that
+    no other axis in the chart actually declares. Excel treats this as a fatal
+    package error and silently strips the whole drawing part on next open."""
+    try:
+        root = ET.fromstring(chart_bytes)
+    except ET.ParseError:
+        return False
+
+    axis_tags = {"catAx", "valAx", "dateAx", "serAx"}
+    all_ax_ids: set[str] = set()
+    crossings: list[str] = []
+    for el in root.iter():
+        if _local_tag(el.tag) not in axis_tags:
+            continue
+        own_id = None
+        for child in el:
+            lname = _local_tag(child.tag)
+            if lname == "axId" and own_id is None:
+                own_id = child.get("val")
+            elif lname == "crossAx":
+                crossings.append(child.get("val"))
+        if own_id is not None:
+            all_ax_ids.add(own_id)
+
+    return all(cross_id in all_ax_ids for cross_id in crossings)
+
+
 def _next_available_number(zf, pattern: str) -> int:
     existing = set()
     prefix, suffix = pattern.split("{}")
@@ -330,7 +398,9 @@ def _next_free_rid(rels_xml_bytes: bytes) -> str:
 
 
 def fix_by_sales_charts(session: Session) -> bool:
-    """Restore the two missing pivot charts on the 'By Sales' tab."""
+    """Restore the two pivot charts on the 'By Sales' tab: recreate them if the
+    drawing relationship is missing entirely, or repair them in place if the
+    relationship exists but the chart XML is structurally broken."""
     sheet_file = _find_sheet_file(session, "By Sales")
     if sheet_file is None:
         print("  ERROR: 'By Sales' tab not found in workbook.")
@@ -338,8 +408,27 @@ def fix_by_sales_charts(session: Session) -> bool:
     print(f"  Found 'By Sales' -> {sheet_file}")
 
     if _has_drawing_rel(session, sheet_file):
-        print("  No fix needed: 'By Sales' already has a drawing relationship.")
-        return False
+        drawing_path, chart_paths = _find_drawing_and_charts(session, sheet_file)
+        broken = [p for p in chart_paths if not _chart_axes_valid(session.read(p))]
+        if not broken:
+            print("  No fix needed: 'By Sales' already has a drawing relationship with valid charts.")
+            return False
+
+        print(f"  Drawing relationship exists, but {len(broken)} chart part(s) are structurally "
+              f"broken (an axis <crossAx> points at an axId nothing else declares).")
+        print("  This is the signature left behind when openpyxl re-saves the workbook and mangles "
+              "these pivot charts -- Excel strips the whole drawing part on next open because of it.")
+        if len(chart_paths) != 2:
+            print(f"  ERROR: expected exactly 2 chart parts on 'By Sales', found {len(chart_paths)}. "
+                  "Aborting rather than guessing which template applies to which part.")
+            return False
+
+        print(f"  Repairing in place: {chart_paths[0]}, {chart_paths[1]}, {drawing_path}")
+        session.write(chart_paths[0], CHART1_XML.strip().encode("utf-8"))
+        session.write(chart_paths[1], CHART2_XML.strip().encode("utf-8"))
+        session.write(drawing_path,   DRAWING_XML.strip().encode("utf-8"))
+        print("  Changes staged in session (not yet saved to disk).")
+        return True
 
     chart_n   = _next_available_number(session, "xl/charts/chart{}.xml")
     drawing_n = _next_available_number(session, "xl/drawings/drawing{}.xml")
